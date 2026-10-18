@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "yppowers",
+  "version": "${version}",
+  "name": "YP Powers",
+  "description": "11 unique combat powers with keybindings, alliances, and full configuration.",
+  "authors": [
+    "YP"
+  ],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.yppowers.YPPowersMod"
+    ],
+    "client": [
+      "com.yppowers.YPPowersClient"
+    ]
+  },
+  "mixins": [
+    "yppowers.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.18.1",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

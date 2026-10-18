@@ -1,0 +1,24 @@
+{
+    "required": true,
+    "package": "com.yppowers.mixin",
+    "compatibilityLevel": "JAVA_21",
+    "mixins": [
+        "EntityVelocityAccessor",
+        "PersistentProjectileDamageAccessor",
+        "EntityMovementMixin",
+        "LivingEntityMixin",
+        "ServerWorldMixin",
+        "EndPortalBlockMixin",
+        "AbstractFurnaceBlockEntityMixin",
+        "PlayerEntityMixin",
+        "ServerPlayerEntityMixin",
+        "ProjectileEntityMixin",
+        "MobEntityMixin"
+    ],
+    "client": [
+        "client.BackgroundRendererMixin"
+    ],
+    "injectors": {
+        "defaultRequire": 1
+    }
+}
