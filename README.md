@@ -2,7 +2,7 @@
 
 A Fabric mod for **Minecraft Java Edition 1.21.11** that adds 11 unique combat powers. Server operators can assign them to players. Every power has its own abilities, passives, and keybinds, and an alliance system keeps your teammates safe from your attacks.
 
-**[Download the latest release](https://github.com/autumneddd/yppowers/releases/latest)**
+**[Download the latest release](https://github.com/autumneddd/yppowers/releases/latest)** · **[Changelog](CHANGELOG.md)**
 
 ---
 
