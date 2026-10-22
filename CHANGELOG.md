@@ -2,6 +2,14 @@
 
 All notable changes to YP Powers are listed here.
 
+## [1.1.0] - 2026-10-22
+
+### Powers
+- **Thor:** a new power centered on a soulbound mace with Density 5, Wind Burst 2, Mending, and Unbreaking 3. Hold and release right-click to Riptide (works out of water), and press `G` to throw the mace. Where it lands it strikes lightning, digs a crater, and the mace flies back to you like a Loyalty trident, smashing through blocks as it returns. Press `G` again while the mace is still flying to teleport to it and call it back. The mace is never lost on death.
+
+### Configuration
+- New Thor settings: `thor_riptide_min_charge_ticks`, `thor_riptide_strength`, `thor_throw_speed`, `thor_crater_enabled`, `thor_crater_radius`, `thor_crater_depth`, `thor_impact_damage`, and `thor_impact_radius`.
+
 ## [1.0.0] - 2026-10-18
 
 First public release, for Minecraft Java Edition 1.21.11 (Fabric).

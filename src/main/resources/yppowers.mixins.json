@@ -13,7 +13,8 @@
         "PlayerEntityMixin",
         "ServerPlayerEntityMixin",
         "ProjectileEntityMixin",
-        "MobEntityMixin"
+        "MobEntityMixin",
+        "ThorMaceItemMixin"
     ],
     "client": [
         "client.BackgroundRendererMixin"

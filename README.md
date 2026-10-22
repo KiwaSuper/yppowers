@@ -1,6 +1,6 @@
 # YP Powers
 
-A Fabric mod for **Minecraft Java Edition 1.21.11** that adds 11 unique combat powers. Server operators can assign them to players. Every power has its own abilities, passives, and keybinds, and an alliance system keeps your teammates safe from your attacks.
+A Fabric mod for **Minecraft Java Edition 1.21.11** that adds 12 unique combat powers. Server operators can assign them to players. Every power has its own abilities, passives, and keybinds, and an alliance system keeps your teammates safe from your attacks.
 
 **[Download the latest release](https://github.com/autumneddd/yppowers/releases/latest)** · **[Changelog](CHANGELOG.md)**
 
@@ -10,7 +10,7 @@ A Fabric mod for **Minecraft Java Edition 1.21.11** that adds 11 unique combat p
 
 1. Install [Fabric Loader](https://fabricmc.net/use/) **0.18.1 or newer** for Minecraft 1.21.11.
 2. Download [Fabric API](https://modrinth.com/mod/fabric-api) **0.141.6+1.21.11** or newer.
-3. Put `yppowers-1.0.0.jar` and Fabric API in your `.minecraft/mods` folder.
+3. Put `yppowers-1.1.0.jar` and Fabric API in your `.minecraft/mods` folder.
 4. Launch the game with the Fabric profile.
 
 For multiplayer, the mod must be installed on **both the server and every client**.
@@ -44,6 +44,7 @@ The player can then use the power's abilities with the keybinds below.
 | Stick of Deletion | `deletion` | A stick that launches enemies across the map |
 | Fire God | `fire_god` | Fire immunity, Nether mobs ignore you, Ghast fireballs |
 | Ice Emperor | `ice_emperor` | Frost aura and a freezing area attack |
+| Thor | `thor` | Enchanted mace with Riptide, a throw, and lightning + crater |
 
 ### Divinity Shield
 - **`G` — Barrier Dome:** Raises a 12-block dome for 15 seconds. Enemies and projectiles that aren't allied can't get inside.
@@ -110,6 +111,12 @@ The player can then use the power's abilities with the keybinds below.
 - **Weaknesses:** You take 30% more fire and lava damage, and you get Weakness while in the Nether.
 - Immune to freezing and powder snow.
 - **`R`:** Turns the power on or off.
+
+### Thor
+- **Right-click (hold) — Riptide:** Hold and release right-click with the mace to launch yourself like a Riptide III trident, anywhere — no water or rain required.
+- **`G` — Throw:** Throws the mace. Where it lands it strikes lightning and digs a crater, then the mace flies back to you like a Loyalty trident, smashing through blocks as it returns. Press `G` again while it's still flying to teleport to it and call it back to your hand.
+- Comes with a mace (Density 5, Wind Burst 2, Mending, Unbreaking 3) that you keep when you die.
+- The crater and return tunnel never break bedrock, storage, or unbreakable blocks, and block breaking can be turned off in the config.
 
 ---
 
@@ -181,6 +188,15 @@ Times are measured in **ticks**, where 20 ticks equal 1 second. Setting a cooldo
 | `ice_emperor_aura_freeze_damage_interval_ticks` | `40` (2 s) |
 | `ice_emperor_freeze_duration_ticks` | `50` (2.5 s) |
 | `ice_emperor_cooldown_ticks` | `600` (30 s) |
+| `thor_riptide_min_charge_ticks` | `10` (0.5 s) |
+| `thor_riptide_strength` | `3.0` |
+| `thor_throw_speed` | `2.2` |
+| `thor_crater_enabled` | `true` |
+| `thor_crater_radius` | `3` |
+| `thor_crater_depth` | `2` |
+| `thor_return_break_radius` | `1` |
+| `thor_impact_damage` | `6.0` (3 hearts) |
+| `thor_impact_radius` | `3.0` |
 
 ---
 

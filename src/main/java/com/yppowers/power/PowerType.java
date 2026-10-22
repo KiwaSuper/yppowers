@@ -11,7 +11,8 @@ public enum PowerType {
     BOOTS_SKY("boots_sky", "Boots of the Sky"),
     DELETION("deletion", "Stick of Deletion"),
     FIRE_GOD("fire_god", "Fire God"),
-    ICE_EMPEROR("ice_emperor", "Ice Emperor");
+    ICE_EMPEROR("ice_emperor", "Ice Emperor"),
+    THOR("thor", "Thor");
 
     private final String id;
     private final String displayName;

@@ -51,6 +51,26 @@ public class YPConfig {
     public int ice_emperor_freeze_duration_ticks = 50;
     public int ice_emperor_cooldown_ticks = 600;
 
+    // Thor: soulbound mace with Riptide, a throw, and lightning + crater on impact.
+    /** Minimum right-click charge (ticks) before the mace riptides. */
+    public int thor_riptide_min_charge_ticks = 10;
+    /** Launch speed multiplier for the Thor mace's Riptide (3.0 matches Riptide III). */
+    public double thor_riptide_strength = 3.0;
+    /** Initial velocity of the thrown mace. */
+    public double thor_throw_speed = 2.2;
+    /** Whether the mace breaks blocks (crater on impact, tunnel on return). */
+    public boolean thor_crater_enabled = true;
+    /** Horizontal radius (blocks) of the impact crater. */
+    public int thor_crater_radius = 3;
+    /** Maximum depth (blocks) of the impact crater. */
+    public int thor_crater_depth = 2;
+    /** Radius (blocks) of the tunnel dug as the mace returns; 0 disables return digging. */
+    public int thor_return_break_radius = 1;
+    /** Lightning damage dealt to non-allies within the impact radius. */
+    public double thor_impact_damage = 6.0;
+    /** Radius (blocks) over which impact lightning damage is applied. */
+    public double thor_impact_radius = 3.0;
+
     public static synchronized YPConfig getInstance() {
         if (instance == null) instance = new YPConfig();
         return instance;

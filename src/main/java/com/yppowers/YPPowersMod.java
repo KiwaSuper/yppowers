@@ -2,6 +2,7 @@ package com.yppowers;
 
 import com.yppowers.command.YPCommands;
 import com.yppowers.config.YPConfig;
+import com.yppowers.entity.YPEntities;
 import com.yppowers.network.YPNetworking;
 import com.yppowers.power.Power;
 import com.yppowers.power.PowerManager;
@@ -33,7 +34,9 @@ public class YPPowersMod implements ModInitializer {
         PowerManager.registerPower(new StickOfDeletionPower());
         PowerManager.registerPower(new FireGodPower());
         PowerManager.registerPower(new IceEmperorPower());
+        PowerManager.registerPower(new ThorPower());
 
+        YPEntities.register();
         YPNetworking.registerServerReceivers();
         YPCommands.register();
 
