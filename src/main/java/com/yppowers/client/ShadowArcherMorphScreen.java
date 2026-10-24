@@ -1,7 +1,6 @@
 package com.yppowers.client;
 
 import com.yppowers.power.impl.ShadowArcherMorphRegistry;
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -141,11 +140,28 @@ public final class ShadowArcherMorphScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        if (renderFailureHandled) {
+            renderRenderFailure(context);
+            return;
+        }
         try {
-            renderBackground(context, mouseX, mouseY, delta);
-            super.render(context, mouseX, mouseY, delta);
+            // Avoid Screen.renderBackground here: on 1.21.11 it applies the frame blur,
+            // and some launch/render pipelines have already blurred this frame. Calling
+            // it again throws "Can only blur once per frame" before the widgets render.
+            // Use a self-contained dark backdrop and outlined panel instead.
             int centerX = width / 2;
             int centerY = height / 2;
+            context.fill(0, 0, width, height, 0xD0101824);
+            int panelLeft = Math.max(8, centerX - 166);
+            int panelRight = Math.min(width - 8, centerX + 166);
+            int panelTop = Math.max(8, centerY - 128);
+            int panelBottom = Math.min(height - 8, centerY + 145);
+            context.fill(panelLeft, panelTop, panelRight, panelBottom, 0xE81A2738);
+            context.fill(panelLeft, panelTop, panelRight, panelTop + 1, 0xFF65C7FF);
+            context.fill(panelLeft, panelBottom - 1, panelRight, panelBottom, 0xFF65C7FF);
+            context.fill(panelLeft, panelTop, panelLeft + 1, panelBottom, 0xFF65C7FF);
+            context.fill(panelRight - 1, panelTop, panelRight, panelBottom, 0xFF65C7FF);
+            super.render(context, mouseX, mouseY, delta);
             context.drawCenteredTextWithShadow(textRenderer, title, centerX, centerY - 105, 0xFFFFFF);
             context.drawCenteredTextWithShadow(textRenderer,
                     Text.literal("Search or browse vanilla 1.21.11 mob forms. Each form must be unlocked by defeating it."),
@@ -167,14 +183,22 @@ public final class ShadowArcherMorphScreen extends Screen {
                 context.drawCenteredTextWithShadow(textRenderer,
                         Text.literal("G / H / R activate the selected form's abilities."), centerX, centerY + 108, 0xB8DFFF);
             }
-        } catch (RuntimeException exception) {
+        } catch (RuntimeException | LinkageError exception) {
             if (!renderFailureHandled) {
                 renderFailureHandled = true;
-                LOGGER.error("Shadow Archer morph menu failed while rendering; closing menu safely", exception);
-                MinecraftClient client = MinecraftClient.getInstance();
-                if (client.currentScreen == this) client.setScreen(null);
+                LOGGER.error("Shadow Archer morph menu failed while rendering; keeping a diagnostic screen open", exception);
             }
+            // Keep the screen visible instead of making it flash closed. This also tells the
+            // player where to find the useful stack trace if an unexpected client issue remains.
+            renderRenderFailure(context);
         }
+    }
+
+    private void renderRenderFailure(DrawContext context) {
+        context.fill(0, 0, width, height, 0xE0101824);
+        context.drawCenteredTextWithShadow(textRenderer, Text.literal("Shadow Archer Menu"), width / 2, height / 2 - 18, 0xFFFFFF);
+        context.drawCenteredTextWithShadow(textRenderer, Text.literal("The menu encountered a rendering error."), width / 2, height / 2 + 2, 0xFFB5B5);
+        context.drawCenteredTextWithShadow(textRenderer, Text.literal("See latest.log for the stack trace; press Esc to close."), width / 2, height / 2 + 18, 0xB8DFFF);
     }
 
     @Override

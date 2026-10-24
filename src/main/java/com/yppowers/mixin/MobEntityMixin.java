@@ -1,5 +1,6 @@
 package com.yppowers.mixin;
 
+import com.yppowers.command.GraceManager;
 import com.yppowers.power.Power;
 import com.yppowers.power.PowerManager;
 import com.yppowers.power.PowerType;
@@ -36,7 +37,8 @@ public abstract class MobEntityMixin {
 
     @Unique
     private boolean yppowers$shouldIgnore(ServerPlayerEntity player) {
-        if (player.getEntityWorld().getServer() == null) return false;
+        if (player.getEntityWorld().getServer() == null
+                || GraceManager.isActive(player.getEntityWorld().getServer())) return false;
         PowerManager manager = PowerManager.get(player.getEntityWorld().getServer());
         PowerType type = manager.getPowerType(player.getUuid());
         if (type == null) return false;

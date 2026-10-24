@@ -31,6 +31,14 @@ public class PowerManager extends PersistentState {
     private final Map<UUID, Set<String>> shadowArcherUnlockedArrows = new HashMap<>();
     /** Powers explicitly toggled off by their owners (currently GOAT and Ice Emperor). */
     private final Map<UUID, Set<String>> disabledPowers = new HashMap<>();
+    /** Persistent owner/entity/dimension/marker metadata for an away Thor hammer. */
+    private final Map<UUID, NbtCompound> thorHammerStates = new HashMap<>();
+    /** Remaining server ticks in the global grace period; persisted with the world. */
+    private int graceTicksRemaining;
+    /** Persistent long cooldowns for Teleport Gambit's Domain ability. */
+    private final Map<UUID, Integer> teleportGambitDomainCooldowns = new HashMap<>();
+    /** Players disconnected or respawned before a pocket-domain return could be completed. */
+    private final Map<UUID, NbtCompound> teleportGambitPendingReturns = new HashMap<>();
     private static final Map<PowerType, Power> powerInstances = new HashMap<>();
 
     /** Codec wrapper keeps the existing compound structure while using 1.21.11 state persistence. */
@@ -128,6 +136,104 @@ public class PowerManager extends PersistentState {
         return playerPowers.get(uuid);
     }
 
+    public void saveThorHammerState(UUID playerId, NbtCompound state) {
+        if (state == null || state.isEmpty()) {
+            if (thorHammerStates.remove(playerId) != null) markDirty();
+            return;
+        }
+        thorHammerStates.put(playerId, state.copy());
+        markDirty();
+    }
+
+    public NbtCompound getThorHammerState(UUID playerId) {
+        NbtCompound state = thorHammerStates.get(playerId);
+        return state == null ? null : state.copy();
+    }
+
+    public Map<UUID, NbtCompound> getThorHammerStates() {
+        Map<UUID, NbtCompound> copy = new HashMap<>();
+        thorHammerStates.forEach((id, state) -> copy.put(id, state.copy()));
+        return copy;
+    }
+
+    public void clearThorHammerState(UUID playerId) {
+        if (thorHammerStates.remove(playerId) != null) markDirty();
+    }
+
+    public boolean isGracePeriodActive() {
+        return graceTicksRemaining > 0;
+    }
+
+    public int getGraceTicksRemaining() {
+        return Math.max(0, graceTicksRemaining);
+    }
+
+    /** Sets the remaining duration. One minute equals 1,200 server ticks. */
+    public void setGraceTicksRemaining(int ticks) {
+        int clamped = Math.max(0, ticks);
+        if (graceTicksRemaining != clamped) {
+            graceTicksRemaining = clamped;
+            markDirty();
+        }
+    }
+
+    /** Advance the global grace countdown once per server tick. */
+    public void tickGracePeriod(MinecraftServer server) {
+        if (graceTicksRemaining <= 0) return;
+        graceTicksRemaining--;
+        // Persist once per second rather than marking the world state dirty 20 times/second.
+        if (graceTicksRemaining == 0 || graceTicksRemaining % 20 == 0) markDirty();
+        if (graceTicksRemaining == 0) {
+            server.getPlayerManager().broadcast(
+                    net.minecraft.text.Text.literal("Grace period ended. Abilities and PvP are enabled again."), false);
+        }
+    }
+
+    public int getTeleportGambitDomainCooldownTicks(UUID playerId) {
+        return Math.max(0, teleportGambitDomainCooldowns.getOrDefault(playerId, 0));
+    }
+
+    public void setTeleportGambitDomainCooldownTicks(UUID playerId, int ticks) {
+        int clamped = Math.max(0, ticks);
+        if (clamped == 0) teleportGambitDomainCooldowns.remove(playerId);
+        else teleportGambitDomainCooldowns.put(playerId, clamped);
+        markDirty();
+    }
+
+    /** Count domain cooldowns down once per server tick and persist changes once per second. */
+    public void tickTeleportGambitDomainCooldowns() {
+        if (teleportGambitDomainCooldowns.isEmpty()) return;
+        boolean shouldSave = false;
+        var iterator = teleportGambitDomainCooldowns.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<UUID, Integer> entry = iterator.next();
+            int next = entry.getValue() - 1;
+            if (next <= 0) {
+                iterator.remove();
+                shouldSave = true;
+            } else {
+                entry.setValue(next);
+                if (next % 20 == 0) shouldSave = true;
+            }
+        }
+        if (shouldSave) markDirty();
+    }
+
+    public void saveTeleportGambitPendingReturn(UUID playerId, NbtCompound location) {
+        if (location == null || location.isEmpty()) return;
+        teleportGambitPendingReturns.put(playerId, location.copy());
+        markDirty();
+    }
+
+    public NbtCompound getTeleportGambitPendingReturn(UUID playerId) {
+        NbtCompound data = teleportGambitPendingReturns.get(playerId);
+        return data == null ? null : data.copy();
+    }
+
+    public void clearTeleportGambitPendingReturn(UUID playerId) {
+        if (teleportGambitPendingReturns.remove(playerId) != null) markDirty();
+    }
+
     public Power getPowerInstance(PowerType type) {
         return powerInstances.get(type);
     }
@@ -197,6 +303,25 @@ public class PowerManager extends PersistentState {
             disabledPowersNbt.put(entry.getKey().toString(), ids);
         }
         nbt.put("DisabledPowers", disabledPowersNbt);
+
+        NbtCompound thorHammersNbt = new NbtCompound();
+        for (Map.Entry<UUID, NbtCompound> entry : thorHammerStates.entrySet()) {
+            thorHammersNbt.put(entry.getKey().toString(), entry.getValue().copy());
+        }
+        nbt.put("ThorHammerStates", thorHammersNbt);
+        nbt.putInt("GraceTicksRemaining", Math.max(0, graceTicksRemaining));
+
+        NbtCompound tgCooldownsNbt = new NbtCompound();
+        for (Map.Entry<UUID, Integer> entry : teleportGambitDomainCooldowns.entrySet()) {
+            if (entry.getValue() > 0) tgCooldownsNbt.putInt(entry.getKey().toString(), entry.getValue());
+        }
+        nbt.put("TeleportGambitDomainCooldowns", tgCooldownsNbt);
+
+        NbtCompound tgPendingReturnsNbt = new NbtCompound();
+        for (Map.Entry<UUID, NbtCompound> entry : teleportGambitPendingReturns.entrySet()) {
+            tgPendingReturnsNbt.put(entry.getKey().toString(), entry.getValue().copy());
+        }
+        nbt.put("TeleportGambitPendingReturns", tgPendingReturnsNbt);
         return nbt;
     }
 
@@ -261,6 +386,45 @@ public class PowerManager extends PersistentState {
                 if (!set.isEmpty()) manager.disabledPowers.put(uuid, set);
             } catch (IllegalArgumentException ignored) {
                 // Ignore invalid player UUIDs in stored power-toggle entries.
+            }
+        }
+        manager.graceTicksRemaining = Math.max(0, nbt.getInt("GraceTicksRemaining", 0));
+
+        NbtCompound tgCooldownsNbt = nbt.getCompoundOrEmpty("TeleportGambitDomainCooldowns");
+        for (String key : tgCooldownsNbt.getKeys()) {
+            try {
+                UUID playerId = UUID.fromString(key);
+                int remaining = Math.max(0, tgCooldownsNbt.getInt(key, 0));
+                if (remaining > 0) manager.teleportGambitDomainCooldowns.put(playerId, remaining);
+            } catch (IllegalArgumentException ignored) {
+                // Ignore stale malformed cooldown entries.
+            }
+        }
+
+        NbtCompound tgPendingReturnsNbt = nbt.getCompoundOrEmpty("TeleportGambitPendingReturns");
+        for (String key : tgPendingReturnsNbt.getKeys()) {
+            try {
+                UUID playerId = UUID.fromString(key);
+                NbtCompound location = tgPendingReturnsNbt.getCompoundOrEmpty(key);
+                if (Identifier.tryParse(location.getString("Dimension", "")) != null) {
+                    manager.teleportGambitPendingReturns.put(playerId, location.copy());
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Ignore malformed pending locations rather than breaking the world save.
+            }
+        }
+
+        NbtCompound thorHammersNbt = nbt.getCompoundOrEmpty("ThorHammerStates");
+        for (String key : thorHammersNbt.getKeys()) {
+            try {
+                UUID playerId = UUID.fromString(key);
+                NbtCompound state = thorHammersNbt.getCompoundOrEmpty(key);
+                UUID.fromString(state.getString("EntityId", ""));
+                if (net.minecraft.util.Identifier.tryParse(state.getString("Dimension", "")) != null) {
+                    manager.thorHammerStates.put(playerId, state.copy());
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Ignore malformed saved hammer metadata rather than breaking the world save.
             }
         }
         return manager;

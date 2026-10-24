@@ -23,6 +23,8 @@ public abstract class Power {
     public void onPlayerJoin(ServerPlayerEntity player) {} // player joins server with this power
     public void onPlayerRespawn(ServerPlayerEntity player, ServerPlayerEntity oldPlayer) {} // after respawn
 
+    public void onPlayerDeath(ServerPlayerEntity player) {} // when the player dies, before respawn
+
     public void onAttack(ServerPlayerEntity attacker, Entity target) {} // when player attacks entity
 
     public float modifyIncomingDamage(ServerPlayerEntity player, DamageSource source, float amount) { return amount; }

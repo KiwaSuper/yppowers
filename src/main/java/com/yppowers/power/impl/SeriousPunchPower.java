@@ -191,7 +191,10 @@ public class SeriousPunchPower extends Power {
                 for (int dy = -1; dy <= 1; dy++) {
                     BlockPos blockPos = BlockPos.ofFloored(center.add(right.multiply(dx)).add(realUp.multiply(dy)));
                     BlockState state = world.getBlockState(blockPos);
-                    if (!state.isAir() && !state.isOf(Blocks.BEDROCK) && state.getHardness(world, blockPos) >= 0) {
+                    boolean protectedThorCore = state.isOf(Blocks.HEAVY_CORE)
+                            && ThorPower.isProtectedHeavyCore(world, blockPos);
+                    if (!state.isAir() && !state.isOf(Blocks.BEDROCK) && !protectedThorCore
+                            && state.getHardness(world, blockPos) >= 0) {
                         world.breakBlock(blockPos, false);
                     }
                 }

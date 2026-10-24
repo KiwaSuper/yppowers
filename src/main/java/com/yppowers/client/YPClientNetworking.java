@@ -23,6 +23,28 @@ public final class YPClientNetworking {
         ClientPlayNetworking.send(new YPNetworking.KeybindPayload(keyType));
     }
 
+    public static void openMorphMenu() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null || client.world == null || client.getNetworkHandler() == null) return;
+        if (client.currentScreen instanceof ShadowArcherMorphScreen) return;
+        try {
+            client.setScreen(new ShadowArcherMorphScreen());
+            if (!(client.currentScreen instanceof ShadowArcherMorphScreen)) {
+                LOGGER.error("Shadow Archer menu was requested, but Minecraft did not keep the screen open");
+                if (client.player != null) client.player.sendMessage(
+                        Text.literal("Shadow Archer menu could not be opened. Check latest.log."), false);
+            } else {
+                LOGGER.info("Opened Shadow Archer morph menu");
+            }
+        } catch (RuntimeException | LinkageError exception) {
+            LOGGER.error("Could not initialize the Shadow Archer morph menu", exception);
+            if (client.currentScreen instanceof ShadowArcherMorphScreen) client.setScreen(null);
+            if (client.player != null) {
+                client.player.sendMessage(Text.literal("The Shadow Archer menu failed to initialize. See latest.log for details."), false);
+            }
+        }
+    }
+
     public static void sendMorphRequest(String name) {
         MinecraftClient client = MinecraftClient.getInstance();
         // A menu may remain open for a moment while disconnecting or changing servers.
@@ -40,7 +62,16 @@ public final class YPClientNetworking {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             ClientPowerData.hasFireGodPower = false;
             ClientPowerData.hasShadowArcherPower = false;
+            ClientPowerData.shadowArcherMorphed = false;
+            ClientPowerData.shadowArcherDisguiseEntityId = -1;
+            ClientPowerData.shadowArcherMorphEyeHeight = 1.62F;
+            ClientPowerData.shadowArcherMorphHeight = 1.8F;
             ClientPowerData.unlockedShadowArcherMorphs.clear();
+            ClientPowerData.timeStoppedPlayerEntityIds.clear();
+            ClientPowerData.energy = 100.0;
+            ClientPowerData.maxEnergy = 100.0;
+            ClientPowerData.bleedingTicks = 0;
+            ClientPowerData.globalHealthEnabled = true;
         });
         ClientPlayNetworking.registerGlobalReceiver(YPNetworking.SyncFireGodPayload.ID,
                 (payload, context) -> context.client().execute(() -> ClientPowerData.hasFireGodPower = payload.enabled()));
@@ -60,30 +91,28 @@ public final class YPClientNetworking {
                         screen.refreshUnlockStatus();
                     }
                 }));
+        ClientPlayNetworking.registerGlobalReceiver(YPNetworking.SyncShadowArcherMorphViewPayload.ID, (payload, context) ->
+                context.client().execute(() -> {
+                    ClientPowerData.shadowArcherMorphed = payload.morphed();
+                    ClientPowerData.shadowArcherDisguiseEntityId = payload.morphed() ? payload.disguiseEntityId() : -1;
+                    ClientPowerData.shadowArcherMorphEyeHeight = Math.max(0.1F, Math.min(8.0F, payload.eyeHeight()));
+                    ClientPowerData.shadowArcherMorphHeight = Math.max(0.1F, Math.min(16.0F, payload.entityHeight()));
+                }));
         ClientPlayNetworking.registerGlobalReceiver(YPNetworking.OpenMorphMenuPayload.ID, (payload, context) -> {
             MinecraftClient client = context.client();
-            client.execute(() -> {
-                // Ignore late packets during disconnects and duplicate open requests.
-                if (client.player == null || client.world == null || client.getNetworkHandler() == null) return;
-                if (client.currentScreen instanceof ShadowArcherMorphScreen) return;
-                try {
-                    client.setScreen(new ShadowArcherMorphScreen());
-                    if (!(client.currentScreen instanceof ShadowArcherMorphScreen)) {
-                        LOGGER.error("Shadow Archer menu payload arrived but the screen was not installed");
-                        if (client.player != null) client.player.sendMessage(
-                                Text.literal("Shadow Archer menu could not be opened. Check latest.log."), false);
-                    } else {
-                        LOGGER.info("Opened Shadow Archer morph menu");
-                    }
-                } catch (RuntimeException exception) {
-                    // Keep a malformed/failed menu initialization from taking down the whole client.
-                    LOGGER.error("Could not initialize the Shadow Archer morph menu", exception);
-                    client.setScreen(null);
-                    if (client.player != null) {
-                        client.player.sendMessage(Text.literal("The Shadow Archer menu failed to open. See latest.log for details."), false);
-                    }
-                }
-            });
+            client.execute(() -> openMorphMenu());
         });
+        ClientPlayNetworking.registerGlobalReceiver(YPNetworking.SyncTimeStopVisualPayload.ID, (payload, context) ->
+                context.client().execute(() -> {
+                    if (payload.frozen()) ClientPowerData.timeStoppedPlayerEntityIds.add(payload.entityId());
+                    else ClientPowerData.timeStoppedPlayerEntityIds.remove(payload.entityId());
+                }));
+        ClientPlayNetworking.registerGlobalReceiver(YPNetworking.SyncEnergyPayload.ID, (payload, context) ->
+                context.client().execute(() -> {
+                    ClientPowerData.energy = Math.max(0.0, payload.energy());
+                    ClientPowerData.maxEnergy = Math.max(1.0, payload.maxEnergy());
+                    ClientPowerData.bleedingTicks = Math.max(0, payload.bleedingTicks());
+                    ClientPowerData.globalHealthEnabled = payload.globalHealthEnabled();
+                }));
     }
 }

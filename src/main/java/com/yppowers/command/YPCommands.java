@@ -2,8 +2,12 @@ package com.yppowers.command;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.yppowers.alliance.AllianceManager;
 import com.yppowers.power.PowerManager;
+import com.yppowers.config.YPConfig;
+import com.yppowers.energy.EnergyManager;
+import com.yppowers.energy.GlobalHealthManager;
 import com.yppowers.power.PowerType;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.command.CommandRegistryAccess;
@@ -25,6 +29,37 @@ public class YPCommands {
     }
 
     private static void registerCommands(CommandDispatcher<ServerCommandSource> dispatcher, CommandRegistryAccess registryAccess, CommandManager.RegistrationEnvironment environment) {
+        dispatcher.register(CommandManager.literal("grace")
+            .requires(source -> source.getPermissions().hasPermission(new Permission.Level(PermissionLevel.GAMEMASTERS)))
+            .then(CommandManager.argument("minutes", IntegerArgumentType.integer(0, Integer.MAX_VALUE / 1200))
+                .executes(context -> {
+                    int minutes = IntegerArgumentType.getInteger(context, "minutes");
+                    PowerManager manager = PowerManager.get(context.getSource().getServer());
+                    if (minutes == 0) {
+                        boolean wasActive = manager.isGracePeriodActive();
+                        manager.setGraceTicksRemaining(0);
+                        if (wasActive) {
+                            context.getSource().getServer().getPlayerManager().broadcast(
+                                    Text.literal("Grace period ended by an administrator. Abilities and PvP are enabled again.")
+                                            .formatted(Formatting.GREEN), false);
+                        }
+                        context.getSource().sendFeedback(() -> Text.literal(wasActive
+                                ? "Grace period disabled." : "No grace period was active."), true);
+                        return 1;
+                    }
+
+                    int ticks = Math.multiplyExact(minutes, 1200);
+                    manager.setGraceTicksRemaining(ticks);
+                    context.getSource().getServer().getPlayerManager().broadcast(
+                            Text.literal("Grace period started for " + minutes
+                                    + (minutes == 1 ? " minute. Abilities and PvP are disabled." : " minutes. Abilities and PvP are disabled."))
+                                    .formatted(Formatting.GOLD), false);
+                    context.getSource().sendFeedback(() -> Text.literal("Grace period set to " + minutes + " minute(s)."), true);
+                    return 1;
+                })
+            )
+        );
+
         dispatcher.register(CommandManager.literal("yp")
             .then(CommandManager.literal("power")
                 .requires(source -> source.getPermissions().hasPermission(new Permission.Level(PermissionLevel.GAMEMASTERS)))
@@ -80,6 +115,51 @@ public class YPCommands {
                             context.getSource().sendFeedback(() -> Text.literal(target.getName().getString() + "'s Power: " + powerName).formatted(Formatting.YELLOW), false);
                             return 1;
                         })
+                    )
+                )
+            )
+            .then(CommandManager.literal("health")
+                .requires(source -> source.getPermissions().hasPermission(new Permission.Level(PermissionLevel.GAMEMASTERS)))
+                .then(CommandManager.literal("enable").executes(context -> {
+                    YPConfig config = YPConfig.getInstance();
+                    config.global_health_enabled = true;
+                    config.save();
+                    GlobalHealthManager.applyAll(context.getSource().getServer());
+                    context.getSource().sendFeedback(() -> Text.literal("Global player health enabled (target "
+                            + config.global_player_health_value + " HP). Mobs are unchanged.").formatted(Formatting.GREEN), true);
+                    return 1;
+                }))
+                .then(CommandManager.literal("disable").executes(context -> {
+                    YPConfig config = YPConfig.getInstance();
+                    config.global_health_enabled = false;
+                    config.save();
+                    GlobalHealthManager.applyAll(context.getSource().getServer());
+                    context.getSource().sendFeedback(() -> Text.literal("Global player health disabled. Mobs are unchanged.").formatted(Formatting.YELLOW), true);
+                    return 1;
+                }))
+                .then(CommandManager.literal("status").executes(context -> {
+                    YPConfig config = YPConfig.getInstance();
+                    context.getSource().sendFeedback(() -> Text.literal("Global player health: "
+                            + (config.global_health_enabled ? "enabled, " + config.global_player_health_value + " HP" : "disabled")
+                            + " (mobs unchanged).").formatted(Formatting.YELLOW), false);
+                    return 1;
+                }))
+            )
+            .then(CommandManager.literal("energy")
+                .requires(source -> source.getPermissions().hasPermission(new Permission.Level(PermissionLevel.GAMEMASTERS)))
+                .then(CommandManager.argument("player", EntityArgumentType.player())
+                    .then(CommandManager.literal("set")
+                        .then(CommandManager.argument("amount", com.mojang.brigadier.arguments.DoubleArgumentType.doubleArg(0.0, 100000.0))
+                            .executes(context -> {
+                                ServerPlayerEntity target = EntityArgumentType.getPlayer(context, "player");
+                                double amount = com.mojang.brigadier.arguments.DoubleArgumentType.getDouble(context, "amount");
+                                EnergyManager.get(context.getSource().getServer()).setEnergy(target.getUuid(), amount);
+                                EnergyManager.get(context.getSource().getServer()).sync(target);
+                                context.getSource().sendFeedback(() -> Text.literal("Set " + target.getName().getString()
+                                        + " Energy to " + amount + ".").formatted(Formatting.GREEN), true);
+                                return 1;
+                            })
+                        )
                     )
                 )
             )

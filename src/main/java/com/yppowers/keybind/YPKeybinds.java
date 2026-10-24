@@ -2,7 +2,6 @@ package com.yppowers.keybind;
 
 import com.yppowers.client.YPClientNetworking;
 import com.yppowers.client.ClientPowerData;
-import com.yppowers.client.ShadowArcherMorphScreen;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
@@ -85,9 +84,9 @@ public class YPKeybinds {
         while (KEY_SECONDARY.wasPressed()) YPClientNetworking.sendKeybindPacket(1);
         while (KEY_TERTIARY.wasPressed()) {
             if (ClientPowerData.hasShadowArcherPower) {
-                // The morph menu is client UI: open it immediately instead of waiting for a
-                // server response packet that may be delayed or suppressed by networking state.
-                client.setScreen(new ShadowArcherMorphScreen());
+                // The morph menu is client UI: open immediately and report GUI initialization
+                // failures rather than silently flashing closed.
+                YPClientNetworking.openMorphMenu();
             } else {
                 YPClientNetworking.sendKeybindPacket(2);
             }

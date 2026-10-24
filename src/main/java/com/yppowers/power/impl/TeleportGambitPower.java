@@ -36,6 +36,14 @@ public class TeleportGambitPower extends Power {
 
     @Override public PowerType getType() { return PowerType.GAMBIT; }
 
+    @Override public void onSecondaryActivate(ServerPlayerEntity player) {
+        TeleportGambitDomainManager.beginCharge(player);
+    }
+
+    @Override public void onPlayerDeath(ServerPlayerEntity player) {
+        TeleportGambitDomainManager.onPlayerDeath(player);
+    }
+
     @Override public void onPrimaryActivate(ServerPlayerEntity player) {
         UUID uuid = player.getUuid();
         if (activePads.containsKey(uuid)) {
@@ -178,6 +186,7 @@ public class TeleportGambitPower extends Power {
     }
 
     public static void playerDisconnected(ServerPlayerEntity player) {
+        TeleportGambitDomainManager.onPlayerDisconnect(player);
         if (player.getEntityWorld().getServer() == null) return;
         Power registered = PowerManager.get(player.getEntityWorld().getServer()).getPowerInstance(PowerType.GAMBIT);
         if (registered instanceof TeleportGambitPower gambit) {
@@ -188,6 +197,7 @@ public class TeleportGambitPower extends Power {
     }
 
     @Override public void onRemove(ServerPlayerEntity player) {
+        TeleportGambitDomainManager.onPowerRemoved(player);
         removePad(player, true);
         gatewayCooldowns.remove(player.getUuid());
     }
