@@ -3,6 +3,7 @@
 **Release version: `1-14-3`** · Minecraft Java Edition **1.21.11** · Fabric · Java 21
 
 A Fabric mod implementing twelve YP Powers, including the original eleven powers plus Thor. The consolidated development history is in [`CHANGELOG.md`](CHANGELOG.md). The version is sourced from `mod_version` in `gradle.properties` and is inserted into `fabric.mod.json` by the Gradle `processResources` task.
+Special thanks to @autumneddd for helping me upload the initial release.
 
 ## Requirements
 
