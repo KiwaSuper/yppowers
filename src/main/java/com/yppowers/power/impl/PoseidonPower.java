@@ -109,16 +109,22 @@ public class PoseidonPower extends Power {
 
         // Read the real stack state: the per-session cache is lost on reconnect, while the
         // enchantment component persists. This keeps the toggle correct after relogging.
-        boolean currentlyRiptide = hasRiptide(player, trident);
-        boolean newRiptideMode = !currentlyRiptide;
-        applyMaxedTridentEnchantments(player, trident, newRiptideMode);
+        boolean currentlyRiptide = EnchantmentHelper.getLevel(
+                player.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT).getOrThrow(Enchantments.RIPTIDE), trident) > 0;
+        boolean newMode = !currentlyRiptide;
+        
+        trident.set(net.minecraft.component.DataComponentTypes.ENCHANTMENTS, net.minecraft.component.type.ItemEnchantmentsComponent.DEFAULT);
 
-        if (newRiptideMode) {
-            player.sendMessage(Text.literal("Poseidon Trident: Riptide III | Impaling V | Unbreaking III | Mending I | Vanishing I")
-                    .formatted(Formatting.AQUA), true);
+        if (newMode) {
+            EnchantmentHelper.apply(trident, builder -> builder.add(
+                    player.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT).getOrThrow(Enchantments.RIPTIDE), 3));
+            player.sendMessage(Text.literal("Trident: Riptide III").formatted(Formatting.AQUA), true);
         } else {
-            player.sendMessage(Text.literal("Poseidon Trident: Loyalty III + Channeling I | Impaling V | Unbreaking III | Mending I | Vanishing I")
-                    .formatted(Formatting.GOLD), true);
+            EnchantmentHelper.apply(trident, builder -> {
+                builder.add(player.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT).getOrThrow(Enchantments.LOYALTY), 3);
+                builder.add(player.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT).getOrThrow(Enchantments.CHANNELING), 1);
+            });
+            player.sendMessage(Text.literal("Trident: Loyalty III + Channeling").formatted(Formatting.GOLD), true);
         }
 
         swapCooldowns.put(uuid, Math.max(0, YPConfig.getInstance().poseidon_trident_swap_cooldown_ticks));
@@ -140,55 +146,23 @@ public class PoseidonPower extends Power {
         ensureTrident(player);
     }
 
-    private boolean hasRiptide(ServerPlayerEntity player, ItemStack trident) {
-        return EnchantmentHelper.getLevel(
-                player.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT).getOrThrow(Enchantments.RIPTIDE), trident) > 0;
-    }
-
-    /**
-     * Applies every max-level vanilla trident enchantment. Riptide is mutually exclusive
-     * with Loyalty and Channeling, so quick-swap selects exactly one of those configurations.
-     */
-    private void applyMaxedTridentEnchantments(ServerPlayerEntity player, ItemStack trident, boolean riptideMode) {
-        var enchantmentRegistry = player.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT);
-        trident.set(net.minecraft.component.DataComponentTypes.ENCHANTMENTS,
-                net.minecraft.component.type.ItemEnchantmentsComponent.DEFAULT);
-        EnchantmentHelper.apply(trident, builder -> {
-            builder.add(enchantmentRegistry.getOrThrow(Enchantments.IMPALING), 5);
-            builder.add(enchantmentRegistry.getOrThrow(Enchantments.UNBREAKING), 3);
-            builder.add(enchantmentRegistry.getOrThrow(Enchantments.MENDING), 1);
-            builder.add(enchantmentRegistry.getOrThrow(Enchantments.VANISHING_CURSE), 1);
-            if (riptideMode) {
-                builder.add(enchantmentRegistry.getOrThrow(Enchantments.RIPTIDE), 3);
-            } else {
-                builder.add(enchantmentRegistry.getOrThrow(Enchantments.LOYALTY), 3);
-                builder.add(enchantmentRegistry.getOrThrow(Enchantments.CHANNELING), 1);
-            }
-        });
-    }
-
     private void ensureTrident(ServerPlayerEntity player) {
         boolean hasTrident = false;
         for (int i = 0; i < player.getInventory().size(); i++) {
             ItemStack stack = player.getInventory().getStack(i);
             if (stack.isOf(Items.TRIDENT) && YPItemData.hasFlag(stack, "YPPoseidonTrident")) {
                 hasTrident = true;
-                // Upgrade older Poseidon tridents in place while preserving the current swap mode.
-                applyMaxedTridentEnchantments(player, stack, hasRiptide(player, stack));
-                tridentMakeUnbreakable(stack);
+                break;
             }
         }
         if (!hasTrident) {
             ItemStack trident = new ItemStack(Items.TRIDENT);
-            applyMaxedTridentEnchantments(player, trident, true);
+            EnchantmentHelper.apply(trident, builder -> builder.add(
+                        player.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT).getOrThrow(Enchantments.RIPTIDE), 3));
             YPItemData.setFlag(trident, "YPPoseidonTrident", true);
-            tridentMakeUnbreakable(trident);
+            trident.set(net.minecraft.component.DataComponentTypes.UNBREAKABLE, net.minecraft.util.Unit.INSTANCE);
             player.giveOrDropStack(trident);
         }
-    }
-
-    private void tridentMakeUnbreakable(ItemStack trident) {
-        trident.set(net.minecraft.component.DataComponentTypes.UNBREAKABLE, net.minecraft.util.Unit.INSTANCE);
     }
 
     @Override

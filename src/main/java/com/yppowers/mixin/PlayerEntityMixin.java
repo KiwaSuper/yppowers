@@ -1,7 +1,6 @@
 package com.yppowers.mixin;
 
 import com.yppowers.alliance.AllianceManager;
-import com.yppowers.command.GraceManager;
 import com.yppowers.power.Power;
 import com.yppowers.power.PowerManager;
 import com.yppowers.power.PowerType;
@@ -33,11 +32,6 @@ public abstract class PlayerEntityMixin {
     @Inject(method = "attack", at = @At("HEAD"), cancellable = true)
     private void yppowers$onAttack(Entity target, CallbackInfo ci) {
         if (((Object) this) instanceof ServerPlayerEntity player && player.getEntityWorld().getServer() != null) {
-            if (target instanceof ServerPlayerEntity && GraceManager.isActive(player.getEntityWorld().getServer())) {
-                GraceManager.notifyPvpBlocked(player);
-                ci.cancel();
-                return;
-            }
             if (target instanceof ServerPlayerEntity targetPlayer && AllianceManager.get(player.getEntityWorld().getServer()).isAlly(player, targetPlayer)) {
                 ci.cancel();
                 return;
@@ -51,8 +45,6 @@ public abstract class PlayerEntityMixin {
     @Inject(method = "attack", at = @At("TAIL"))
     private void yppowers$afterAttack(Entity target, CallbackInfo ci) {
         if (((Object) this) instanceof ServerPlayerEntity player && player.getEntityWorld().getServer() != null) {
-            // Passive custom hit procs (for example, Thor's lightning) are abilities too.
-            if (GraceManager.isActive(player.getEntityWorld().getServer())) return;
             Power power = yppowers$getPower();
             if (power != null) power.onAttack(player, target);
         }

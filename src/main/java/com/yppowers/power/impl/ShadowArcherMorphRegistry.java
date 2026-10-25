@@ -4,8 +4,6 @@ import net.minecraft.entity.EntityType;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -76,11 +74,8 @@ public final class ShadowArcherMorphRegistry {
         }
     }
 
-    private static final Logger LOGGER = LoggerFactory.getLogger("YP Powers/Shadow Archer Catalog");
     private static final Map<String, Profile> PROFILES = new LinkedHashMap<>();
     private static final List<String> VANILLA_MOB_IDS = new ArrayList<>();
-    private static boolean vanillaRosterInitialized;
-    private static boolean registryScanWarningLogged;
 
     static {
         // Bosses and major threats.
@@ -234,58 +229,26 @@ public final class ShadowArcherMorphRegistry {
         add("zombie_horse", Ability.EQUINE_DASH, Ability.INFECTION_BITE, Ability.GUARD,
                 Trait.SPEED, Trait.JUMP);
 
+        // Build the picker from Minecraft's actual runtime registry instead of relying on a
+        // manually maintained list. This automatically includes all vanilla mob entity types
+        // present in 1.21.11 and excludes fake IDs or entities from other namespaces.
+        Set<String> registeredVanillaMobs = new LinkedHashSet<>();
+        for (EntityType<?> type : Registries.ENTITY_TYPE) {
+            Identifier id = Registries.ENTITY_TYPE.getId(type);
+            if (id == null || !"minecraft".equals(id.getNamespace())) continue;
+            if (!MobEntity.class.isAssignableFrom(type.getBaseClass())) continue;
+            registeredVanillaMobs.add(id.getPath());
+        }
+        VANILLA_MOB_IDS.clear();
+        VANILLA_MOB_IDS.addAll(registeredVanillaMobs);
+        VANILLA_MOB_IDS.sort(String.CASE_INSENSITIVE_ORDER);
+        PROFILES.keySet().retainAll(registeredVanillaMobs);
+        for (String id : VANILLA_MOB_IDS) {
+            PROFILES.putIfAbsent(id, genericProfile(id));
+        }
     }
 
     private ShadowArcherMorphRegistry() {}
-
-    /**
-     * Resolve the vanilla mob roster only when the selector is actually requested. Keeping
-     * this out of class initialization avoids making a registry-read problem prevent the menu
-     * class from loading. An individual entity type that cannot be inspected is skipped.
-     */
-    private static synchronized void ensureVanillaRosterInitialized() {
-        if (vanillaRosterInitialized) return;
-        Set<String> registeredVanillaMobs = new LinkedHashSet<>();
-        try {
-            for (EntityType<?> type : Registries.ENTITY_TYPE) {
-                try {
-                    Identifier id = Registries.ENTITY_TYPE.getId(type);
-                    if (id == null || !"minecraft".equals(id.getNamespace())) continue;
-                    if (!MobEntity.class.isAssignableFrom(type.getBaseClass())) continue;
-                    registeredVanillaMobs.add(id.getPath());
-                } catch (RuntimeException | LinkageError entryFailure) {
-                    if (!registryScanWarningLogged) {
-                        LOGGER.warn("Skipping one entity type while building the Shadow Archer menu", entryFailure);
-                        registryScanWarningLogged = true;
-                    }
-                }
-            }
-        } catch (RuntimeException | LinkageError registryFailure) {
-            if (!registryScanWarningLogged) {
-                LOGGER.error("Could not fully read the entity registry for the Shadow Archer menu; using its safe fallback roster", registryFailure);
-                registryScanWarningLogged = true;
-            }
-        }
-
-        if (!registeredVanillaMobs.isEmpty()) {
-            VANILLA_MOB_IDS.clear();
-            VANILLA_MOB_IDS.addAll(registeredVanillaMobs);
-            VANILLA_MOB_IDS.sort(String.CASE_INSENSITIVE_ORDER);
-            PROFILES.keySet().retainAll(registeredVanillaMobs);
-            for (String id : VANILLA_MOB_IDS) {
-                PROFILES.putIfAbsent(id, genericProfile(id));
-            }
-            vanillaRosterInitialized = true;
-        } else {
-            // Keeps the menu usable even if the registry scan fails temporarily. If it did
-            // not complete, a later request retries the full runtime scan.
-            if (VANILLA_MOB_IDS.isEmpty()) {
-                VANILLA_MOB_IDS.addAll(PROFILES.keySet());
-                VANILLA_MOB_IDS.sort(String.CASE_INSENSITIVE_ORDER);
-            }
-            vanillaRosterInitialized = false;
-        }
-    }
 
     private static void add(String ids, Ability primary, Ability secondary, Ability alternate, Trait... traits) {
         for (String id : ids.trim().split("\\s+")) {
@@ -320,12 +283,10 @@ public final class ShadowArcherMorphRegistry {
     }
 
     public static List<String> getVanillaFormIds() {
-        ensureVanillaRosterInitialized();
         return List.copyOf(VANILLA_MOB_IDS);
     }
 
     public static List<String> getProfileIds() {
-        ensureVanillaRosterInitialized();
         return List.copyOf(PROFILES.keySet());
     }
 
