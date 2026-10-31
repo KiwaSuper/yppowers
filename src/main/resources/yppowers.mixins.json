@@ -17,6 +17,7 @@
     "ProjectileEntityMixin",
     "MobEntityMixin",
     "ServerPlayerInteractionManagerMixin",
+    "ThorMaceItemMixin",
     "WorldMixin"
   ],
   "client": [

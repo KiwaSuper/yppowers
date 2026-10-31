@@ -48,23 +48,6 @@ public class YPPowersMod implements ModInitializer {
 
         YPNetworking.registerServerReceivers();
 
-        // Thor's free Riptide-style launch is triggered by right-clicking his soulbound mace.
-        net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
-            if (hand != net.minecraft.util.Hand.MAIN_HAND || world.isClient() || !(player instanceof ServerPlayerEntity serverPlayer) || world.getServer() == null) {
-                return net.minecraft.util.ActionResult.PASS;
-            }
-            PowerManager manager = PowerManager.get(world.getServer());
-            if (manager.getPowerType(serverPlayer.getUuid()) != PowerType.THOR) {
-                return net.minecraft.util.ActionResult.PASS;
-            }
-            Power power = manager.getPowerInstance(PowerType.THOR);
-            if (power instanceof ThorPower thor && com.yppowers.item.YPItemData.hasFlag(serverPlayer.getMainHandStack(), "YPThorMace")) {
-                if (GraceManager.blockAbility(serverPlayer)) return net.minecraft.util.ActionResult.SUCCESS;
-                thor.beginRiptideLaunch(serverPlayer);
-                return net.minecraft.util.ActionResult.SUCCESS;
-            }
-            return net.minecraft.util.ActionResult.PASS;
-        });
         // The custom Web Slingers item uses the same server-authoritative traversal mechanic as Spidey's G key.
         net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
             if (hand != net.minecraft.util.Hand.MAIN_HAND || world.isClient()
@@ -121,7 +104,6 @@ public class YPPowersMod implements ModInitializer {
             TimeWarperPower.serverTick(server);
             SeriousPunchPower.serverTick(server);
             IceEmperorPower.serverTick(server);
-            ThorPower.serverTick(server);
             BootsOfTheSkyPower.serverTick(server);
             for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
                 PowerType type = manager.getPowerType(player.getUuid());
@@ -192,12 +174,6 @@ public class YPPowersMod implements ModInitializer {
                     PowerType type = manager.getPowerType(deadPlayer.getUuid());
                     Power power = type == null ? null : manager.getPowerInstance(type);
                     if (power != null) power.onPlayerDeath(deadPlayer);
-                    // Even if an administrator reassigned Thor's owner while Mjölnir was
-                    // away, that owner's death must still remove the tracked Heavy Core.
-                    if (type != PowerType.THOR) {
-                        Power thor = manager.getPowerInstance(PowerType.THOR);
-                        if (thor instanceof ThorPower thorPower) thorPower.onPlayerDeath(deadPlayer);
-                    }
                 }
                 return;
             }
