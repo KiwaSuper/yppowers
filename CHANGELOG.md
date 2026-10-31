@@ -2,6 +2,30 @@
 
 All notable changes to YP Powers are listed here.
 
+[1.2.0] - 2026-10-31
+
+Powers
+
+Thor: Added a soulbound Mjölnir with Density V, Wind Burst II, Mending, and Unbreaking III. Hold and release right-click to Riptide, even outside water. Press G to throw it, striking real lightning, damaging nearby enemies, and optionally creating a crater. The hammer returns through blocks like a Loyalty trident. Press G again while deployed to teleport to it and recall it. The hammer is never lost on death.
+
+Ice Emperor: Added Armoured, Stealth, and Assassin forms, Frost Guard summons, and Heat Blast. Frost Guards protect their owner and allies, with a weakened emergency summon available at low Energy.
+
+Poseidon: Added Haste, Resistance, and Strength while in water, alongside hunger depletion protection. Reworked the tsunami into a moving wave with improved visuals.
+
+The GOAT: Rebalanced jumping and sprint acceleration, added maximum-speed visual trails, and restored the R passive toggle.
+
+Boots of the Sky: Added toggleable Feather Falling IV for the special boots and gradual Energy consumption during flight.
+
+Time Warper: Optimized rewind history and improved Black Hole visuals.
+
+Shadow Archer: Fixed Railshot piercing compatibility with Minecraft 1.21.11.
+
+Time Clones: Added player-skin-based appearances and gold-tinted elite clones.
+
+Multiple Powers: Added enhanced activation and impact visual effects, including particle bursts, spirals, lightning, and energy effects.
+
+Added Kitsune, Spidey, Illusionist.
+
 ## [1.1.0] - 2026-10-22
 
 ### Powers

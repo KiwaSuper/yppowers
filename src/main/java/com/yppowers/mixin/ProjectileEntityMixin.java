@@ -1,6 +1,7 @@
 package com.yppowers.mixin;
 
 import com.yppowers.alliance.AllianceManager;
+import com.yppowers.command.GraceManager;
 import com.yppowers.power.impl.DivinityShieldPower;
 import com.yppowers.power.impl.ShadowArcherPower;
 import net.minecraft.entity.Entity;
@@ -23,6 +24,13 @@ public abstract class ProjectileEntityMixin {
         Entity target = hitResult.getType() == HitResult.Type.ENTITY ? ((EntityHitResult) hitResult).getEntity() : null;
 
         if (target instanceof ServerPlayerEntity targetPlayer && targetPlayer.getEntityWorld().getServer() != null) {
+            if (owner instanceof ServerPlayerEntity ownerPlayer && ownerPlayer != targetPlayer
+                    && GraceManager.isActive(targetPlayer.getEntityWorld().getServer())) {
+                GraceManager.notifyPvpBlocked(ownerPlayer);
+                projectile.discard();
+                ci.cancel();
+                return;
+            }
             if (owner instanceof ServerPlayerEntity ownerPlayer && AllianceManager.get(targetPlayer.getEntityWorld().getServer()).isAlly(ownerPlayer, targetPlayer)) {
                 projectile.discard();
                 ci.cancel();

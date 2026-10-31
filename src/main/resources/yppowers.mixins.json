@@ -1,25 +1,37 @@
 {
-    "required": true,
-    "package": "com.yppowers.mixin",
-    "compatibilityLevel": "JAVA_21",
-    "mixins": [
-        "EntityVelocityAccessor",
-        "PersistentProjectileDamageAccessor",
-        "EntityMovementMixin",
-        "LivingEntityMixin",
-        "ServerWorldMixin",
-        "EndPortalBlockMixin",
-        "AbstractFurnaceBlockEntityMixin",
-        "PlayerEntityMixin",
-        "ServerPlayerEntityMixin",
-        "ProjectileEntityMixin",
-        "MobEntityMixin",
-        "ThorMaceItemMixin"
-    ],
-    "client": [
-        "client.BackgroundRendererMixin"
-    ],
-    "injectors": {
-        "defaultRequire": 1
-    }
+  "required": true,
+  "package": "com.yppowers.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "EntityVelocityAccessor",
+    "PersistentProjectileDamageAccessor",
+    "PersistentProjectilePierceInvoker",
+    "EntityMovementMixin",
+    "LivingEntityMixin",
+    "HungerManagerMixin",
+    "ServerWorldMixin",
+    "EndPortalBlockMixin",
+    "AbstractFurnaceBlockEntityMixin",
+    "PlayerEntityMixin",
+    "ServerPlayerEntityMixin",
+    "ProjectileEntityMixin",
+    "MobEntityMixin",
+    "ServerPlayerInteractionManagerMixin",
+    "WorldMixin"
+  ],
+  "client": [
+    "client.BackgroundRendererMixin",
+    "client.FrozenPlayerRenderMixin",
+    "client.FrozenPlayerFeatureTintMixin",
+    "client.EnergyHudMixin",
+    "client.ShadowArcherCameraMixin",
+    "client.ShadowArcherGameRendererMixin",
+    "client.ShadowArcherThirdPersonCameraMixin",
+    "client.ShadowArcherFirstPersonDisguiseMixin",
+    "client.TimeCloneRenderStateMixin",
+    "client.TimeCloneSkinRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
 }

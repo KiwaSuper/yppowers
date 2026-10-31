@@ -1,7 +1,9 @@
 package com.yppowers.power.impl;
 
 import com.yppowers.config.YPConfig;
+import com.yppowers.energy.EnergyManager;
 import com.yppowers.alliance.AllianceManager;
+import com.yppowers.command.GraceManager;
 import com.yppowers.power.Power;
 import com.yppowers.power.PowerManager;
 import com.yppowers.power.PowerType;
@@ -49,7 +51,12 @@ public class ShadowArcherPower extends Power {
     private final Set<UUID> processedArrows = new HashSet<>();
     private final Map<UUID, UUID> arrowOwners = new HashMap<>();
     private final Map<UUID, Entity> morphDisguises = new HashMap<>();
+    private final Map<UUID, MorphViewState> syncedMorphViews = new HashMap<>();
     private long lastArrowCleanupTick = Long.MIN_VALUE;
+    private final Map<UUID, Integer> railshotHeldTicks = new HashMap<>();
+    private final Map<UUID, Integer> railshotStreak = new HashMap<>();
+    private final Map<UUID, Boolean> railshotWasHolding = new HashMap<>();
+    private final Map<UUID, Integer> railshotArrowLevel = new HashMap<>();
 
     // Morph-specific ability cooldowns and a reversible snapshot of state changed by a form.
     private final Map<UUID, EnumMap<ShadowArcherMorphRegistry.Ability, Integer>> morphAbilityCooldowns = new HashMap<>();
@@ -68,6 +75,7 @@ public class ShadowArcherPower extends Power {
     );
 
     private record FlightSnapshot(boolean allowFlying, boolean flying) {}
+    private record MorphViewState(boolean morphed, int disguiseEntityId, float eyeHeight, float entityHeight) {}
 
     @Override public PowerType getType() { return PowerType.SHADOW_ARCHER; }
 
@@ -82,6 +90,9 @@ public class ShadowArcherPower extends Power {
         }
         selectedArrow.putIfAbsent(uuid, ArrowType.SPLIT_SHOT);
         YPNetworking.syncShadowArcherMorphCatalog(player);
+        // Reset stale client camera state on assignment/join. The active form, if any,
+        // is sent again from refreshDisguise once its real dimensions are available.
+        syncMorphView(player, false, -1, 1.62F, 1.8F, true);
     }
 
     @Override public void onQuaternaryActivate(ServerPlayerEntity player) {
@@ -102,6 +113,9 @@ public class ShadowArcherPower extends Power {
         }
         ArrowType next = list.get((index + 1) % list.size());
         selectedArrow.put(player.getUuid(), next);
+        // Switching arrow types always clears Railshot draw accumulation; an arrow switch
+        // cannot preserve or exploit an in-progress charged shot.
+        railshotHeldTicks.remove(player.getUuid()); railshotStreak.remove(player.getUuid()); railshotWasHolding.remove(player.getUuid());
         player.sendMessage(Text.literal("Selected Arrow: " + next.getDisplayName()), true);
     }
 
@@ -165,6 +179,17 @@ public class ShadowArcherPower extends Power {
         if (player.getEntityWorld().getServer() == null) return null;
         Set<String> killedIds = PowerManager.get(player.getEntityWorld().getServer()).getShadowArcherKills(player.getUuid());
         String normalized = requested.toLowerCase(Locale.ROOT).replace(' ', '_');
+        // Resolve the request directly first. The catalog sends namespaced registry IDs,
+        // while the menu submits path-only IDs (e.g. "spider"); compare canonical IDs
+        // before the fallback loop so formatting differences cannot reject a real unlock.
+        Identifier requestedId = Identifier.tryParse(normalized.contains(":") ? normalized : "minecraft:" + normalized);
+        if (requestedId != null) {
+            String canonical = requestedId.toString();
+            if (killedIds.contains(canonical) && "minecraft".equals(requestedId.getNamespace())) {
+                EntityType<?> direct = Registries.ENTITY_TYPE.getOptionalValue(requestedId).orElse(null);
+                if (direct != null && ShadowArcherMorphRegistry.getVanillaFormIds().contains(requestedId.getPath())) return direct;
+            }
+        }
         for (String rawId : killedIds) {
             Identifier id = Identifier.tryParse(rawId);
             if (id == null) continue;
@@ -172,7 +197,7 @@ public class ShadowArcherPower extends Power {
             if (type == null) continue;
             // This morph catalog is intentionally vanilla-mob-only. Do not let a forged
             // request or an unlock saved for a non-mob entity bypass what the UI exposes.
-            if (!"minecraft".equals(id.getNamespace()) || !MobEntity.class.isAssignableFrom(type.getBaseClass())) continue;
+            if (!"minecraft".equals(id.getNamespace()) || !ShadowArcherMorphRegistry.getVanillaFormIds().contains(id.getPath())) continue;
             if (normalized.equals(rawId.toLowerCase(Locale.ROOT))
                     || normalized.equals(id.getPath().toLowerCase(Locale.ROOT))
                     || requested.equalsIgnoreCase(type.getName().getString())) return type;
@@ -216,7 +241,9 @@ public class ShadowArcherPower extends Power {
     }
 
     public void onPlayerDisconnect(ServerPlayerEntity player) {
-        endMorph(player);
+        endMorph(player, false);
+        syncedMorphViews.remove(player.getUuid());
+        railshotHeldTicks.remove(player.getUuid()); railshotWasHolding.remove(player.getUuid()); railshotStreak.remove(player.getUuid());
     }
 
     @Override public void onRemove(ServerPlayerEntity player) {
@@ -225,6 +252,7 @@ public class ShadowArcherPower extends Power {
         unlockedArrows.remove(player.getUuid());
         morphCooldowns.remove(player.getUuid());
         morphAbilityCooldowns.remove(player.getUuid());
+        railshotHeldTicks.remove(player.getUuid()); railshotStreak.remove(player.getUuid()); railshotWasHolding.remove(player.getUuid());
         // Killed-mob unlocks remain in this server session if the power is temporarily reassigned.
     }
 
@@ -244,6 +272,10 @@ public class ShadowArcherPower extends Power {
     }
 
     private void endMorph(ServerPlayerEntity player) {
+        endMorph(player, true);
+    }
+
+    private void endMorph(ServerPlayerEntity player, boolean sendViewPacket) {
         UUID uuid = player.getUuid();
         currentMorph.remove(uuid);
         Entity disguise = morphDisguises.remove(uuid);
@@ -271,6 +303,7 @@ public class ShadowArcherPower extends Power {
             morphSavedNames.remove(uuid);
             morphSavedNameVisibility.remove(uuid);
         }
+        syncMorphView(player, false, -1, 1.62F, 1.8F, sendViewPacket);
         // Keep active ability cooldowns across form changes and Human resets. They tick down
         // server-side even while the player is human, preventing cooldown bypass by switching.
     }
@@ -306,7 +339,23 @@ public class ShadowArcherPower extends Power {
         disguise.setVelocity(Vec3d.ZERO);
         ((com.yppowers.mixin.EntityVelocityAccessor) disguise).invokeYppowersScheduleVelocityUpdate();
         if (disguise instanceof LivingEntity living) living.setHealth(living.getMaxHealth());
-        ((ServerWorld) player.getEntityWorld()).spawnParticles(ParticleTypes.SMOKE, player.getX(), player.getY() + 1, player.getZ(), 1, 0.15, 0.3, 0.15, 0);
+        // Use the actual spawned disguise's dimensions (not a hard-coded mob-name table),
+        // then synchronize them for the owner's local first-/third-person camera.
+        syncMorphView(player, true, disguise.getId(), disguise.getEyeHeight(disguise.getPose()), disguise.getHeight(), true);
+    }
+
+    private void syncMorphView(ServerPlayerEntity player, boolean morphed, int disguiseEntityId,
+                               float eyeHeight, float entityHeight, boolean sendPacket) {
+        UUID uuid = player.getUuid();
+        float safeEyeHeight = Float.isFinite(eyeHeight) ? Math.max(0.1F, Math.min(8.0F, eyeHeight)) : 1.62F;
+        float safeEntityHeight = Float.isFinite(entityHeight) ? Math.max(0.1F, Math.min(16.0F, entityHeight)) : 1.8F;
+        int safeEntityId = morphed ? Math.max(0, disguiseEntityId) : -1;
+        MorphViewState next = new MorphViewState(morphed, safeEntityId, safeEyeHeight, safeEntityHeight);
+        MorphViewState previous = syncedMorphViews.put(uuid, next);
+        if (sendPacket && !next.equals(previous)) {
+            YPNetworking.syncShadowArcherMorphView(player, next.morphed(), next.disguiseEntityId(),
+                    next.eyeHeight(), next.entityHeight());
+        }
     }
 
     @Override public void tick(ServerPlayerEntity player) {
@@ -317,6 +366,20 @@ public class ShadowArcherPower extends Power {
             else morphCooldowns.put(uuid, cooldown - 1);
         }
         tickMorphAbilityCooldowns(uuid);
+        boolean holdingBow = player.isUsingItem() && player.getActiveItem().isOf(Items.BOW)
+                && selectedArrow.getOrDefault(uuid, ArrowType.SPLIT_SHOT) == ArrowType.RAILSHOT;
+        if (holdingBow) {
+            railshotWasHolding.put(uuid, true);
+            railshotHeldTicks.put(uuid, Math.min(1000, railshotHeldTicks.getOrDefault(uuid, 0) + 1));
+        } else if (railshotWasHolding.getOrDefault(uuid, false)) {
+            railshotWasHolding.put(uuid, false);
+            railshotHeldTicks.put(uuid, 0);
+        }
+        int streak = railshotStreak.getOrDefault(uuid, 0);
+        if (!holdingBow && streak > 0 && player.getEntityWorld().getServer() != null
+                && player.getEntityWorld().getServer().getTicks() % Math.max(1, YPConfig.getInstance().shadow_archer_railshot_charge_decay_ticks) == 0) {
+            railshotStreak.put(uuid, Math.max(0, streak - 1));
+        }
         EntityType<?> morph = currentMorph.get(uuid);
         if (morph != null) {
             beginMorphState(player);
@@ -865,16 +928,56 @@ public class ShadowArcherPower extends Power {
      * Registers an owned arrow at spawn time so its selected type is locked before it
      * can collide. The tick scan below remains as a fallback for unusual spawn paths.
      */
-    public static void registerSpawnedArrow(ServerWorld world, ArrowEntity arrow) {
+    public static boolean registerSpawnedArrow(ServerWorld world, ArrowEntity arrow) {
         if (world == null || world.getServer() == null
-                || !(arrow.getOwner() instanceof ServerPlayerEntity player)) return;
+                || !(arrow.getOwner() instanceof ServerPlayerEntity player)) return true;
         PowerManager manager = PowerManager.get(world.getServer());
-        if (manager.getPowerType(player.getUuid()) != PowerType.SHADOW_ARCHER) return;
+        if (manager.getPowerType(player.getUuid()) != PowerType.SHADOW_ARCHER) return true;
         Power registered = manager.getPowerInstance(PowerType.SHADOW_ARCHER);
-        if (registered instanceof ShadowArcherPower archer
-                && !archer.processedArrows.contains(arrow.getUuid())) {
-            archer.trackArrow(player, arrow);
+        if (!(registered instanceof ShadowArcherPower archer)
+                || archer.processedArrows.contains(arrow.getUuid())) return true;
+        if (GraceManager.isActive(world.getServer())) {
+            // Grace turns the projectile into an ordinary arrow, with PvP damage blocked by
+            // the combat mixin; it must never gain a delayed special effect after grace ends.
+            GraceManager.blockAbility(player);
+            archer.trackOrdinaryArrow(player, arrow);
+            return true;
         }
+        // Railshot alone requires a staged draw. Each consecutive Railshot increases its
+        // required draw time until vanilla's ~1-second maximum; releasing without a valid
+        // shot, changing arrow type, death, reassignment, or disconnect resets charge.
+        ArrowType selected = archer.selectedArrow.getOrDefault(player.getUuid(), ArrowType.SPLIT_SHOT);
+        if (selected == ArrowType.RAILSHOT) {
+            YPConfig cfg = YPConfig.getInstance();
+            int streak = Math.max(0, archer.railshotStreak.getOrDefault(player.getUuid(), 0));
+            int base = Math.max(1, cfg.shadow_archer_railshot_base_draw_ticks);
+            int maximum = Math.max(base, Math.min(20, cfg.shadow_archer_railshot_max_draw_ticks));
+            int required = Math.min(maximum, base + streak * Math.max(1, cfg.shadow_archer_railshot_draw_gain_ticks));
+            int held = archer.railshotHeldTicks.getOrDefault(player.getUuid(), 0);
+            if (held < required) {
+                player.sendMessage(Text.literal("Railshot draw incomplete: " + held + "/" + required + " ticks.").formatted(net.minecraft.util.Formatting.RED), true);
+                archer.railshotHeldTicks.put(player.getUuid(), 0);
+                return false;
+            }
+            archer.railshotArrowLevel.put(arrow.getUuid(), streak);
+            archer.railshotStreak.put(player.getUuid(), Math.min(10, streak + 1));
+            archer.railshotHeldTicks.put(player.getUuid(), 0);
+        }
+        // Charge once for the original arrow. Split-shot child arrows are marked processed
+        // before spawning, so they do not recursively charge or duplicate the cost.
+        if (!EnergyManager.get(world.getServer()).trySpendDirect(player,
+                YPConfig.getInstance().energy_cost_shadow_archer_arrow, "Shadow Archer arrow")) {
+            return false;
+        }
+        archer.trackArrow(player, arrow);
+        return true;
+    }
+
+    private void trackOrdinaryArrow(ServerPlayerEntity player, ArrowEntity arrow) {
+        UUID arrowId = arrow.getUuid();
+        if (!processedArrows.add(arrowId)) return;
+        arrowTypes.put(arrowId, ArrowType.SPLIT_SHOT);
+        arrowOwners.put(arrowId, player.getUuid());
     }
 
     private void trackArrow(ServerPlayerEntity player, ArrowEntity arrow) {
@@ -900,11 +1003,37 @@ public class ShadowArcherPower extends Power {
                 processedArrows.add(split.getUuid());
                 ((ServerWorld) player.getEntityWorld()).spawnEntity(split);
             }
+        } else if (selected == ArrowType.RAILSHOT) {
+            // Spawn registration saved the charge level before vanilla finishes configuring the arrow.
+            int level = Math.max(0, Math.min(10, railshotArrowLevel.getOrDefault(arrow.getUuid(), 0)));
+            railshotArrowLevel.remove(arrow.getUuid());
+            double speed = 1.0 + level * Math.max(0, YPConfig.getInstance().shadow_archer_railshot_speed_multiplier_per_charge);
+            double damageMultiplier = 1.0 + level * Math.max(0, YPConfig.getInstance().shadow_archer_railshot_damage_multiplier_per_charge);
+            float baseDamage = (float)((com.yppowers.mixin.PersistentProjectileDamageAccessor) arrow).yppowers$getProjectileDamage();
+            arrow.setDamage(baseDamage * damageMultiplier);
+            Vec3d velocity = arrow.getVelocity();
+            if (velocity.lengthSquared() > 1.0e-6) arrow.setVelocity(velocity.normalize().multiply(velocity.length() * speed));
+            ((com.yppowers.mixin.PersistentProjectilePierceInvoker) arrow).yppowers$setPierceLevel((byte)Math.min(4, 1 + level / 3));
+            ((ServerWorld) arrow.getEntityWorld()).spawnParticles(ParticleTypes.ELECTRIC_SPARK, arrow.getX(), arrow.getY(), arrow.getZ(), 10, .1, .1, .1, .02);
         }
     }
 
     private void processArrows(ServerPlayerEntity player) {
         ServerWorld world = ((ServerWorld) player.getEntityWorld());
+        if (GraceManager.isActive(world.getServer())) {
+            // During grace, power arrows behave as ordinary arrows. Mark them so an arrow
+            // fired during grace cannot become a delayed special arrow when grace expires.
+            for (Entity entity : world.iterateEntities()) {
+                if (entity instanceof ArrowEntity arrow && arrow.getOwner() == player) {
+                    UUID arrowId = arrow.getUuid();
+                    if (!processedArrows.contains(arrowId)) GraceManager.blockAbility(player);
+                    processedArrows.add(arrowId);
+                    arrowTypes.put(arrowId, ArrowType.SPLIT_SHOT);
+                    arrowOwners.put(arrowId, player.getUuid());
+                }
+            }
+            return;
+        }
         // Track over a snapshot because split-shot processing can add two new arrows.
         List<ArrowEntity> arrows = new ArrayList<>();
         for (Entity entity : world.iterateEntities()) {
@@ -943,9 +1072,10 @@ public class ShadowArcherPower extends Power {
         if (manager.getPowerType(player.getUuid()) != PowerType.SHADOW_ARCHER) return false;
         Power registered = manager.getPowerInstance(PowerType.SHADOW_ARCHER);
         if (!(registered instanceof ShadowArcherPower archer)) return false;
+        if (GraceManager.isActive(player.getEntityWorld().getServer())) return false;
         if (!archer.processedArrows.contains(arrow.getUuid())) archer.trackArrow(player, arrow);
         ArrowType type = archer.arrowTypes.get(arrow.getUuid());
-        if (type == null || type == ArrowType.SPLIT_SHOT || type == ArrowType.HOMING) return false;
+        if (type == null || type == ArrowType.SPLIT_SHOT || type == ArrowType.HOMING || type == ArrowType.RAILSHOT) return false;
         ServerWorld world = (ServerWorld) projectile.getEntityWorld();
         switch (type) {
             case TNT -> world.createExplosion(

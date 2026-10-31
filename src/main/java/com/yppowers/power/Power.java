@@ -15,13 +15,19 @@ public abstract class Power {
     public void onQuaternaryActivate(ServerPlayerEntity player) {} // B key
     public void onAlternateActivate(ServerPlayerEntity player) {} // R key
 
+    /** Server-side gate checked before Energy is charged; use for active forms / invalid states. */
+    public boolean canUseKey(ServerPlayerEntity player, int keyType) { return true; }
+
     public void tick(ServerPlayerEntity player) {} // every server tick for this player
 
     public void onAssign(ServerPlayerEntity player) {} // when power is assigned
     public void onRemove(ServerPlayerEntity player) {} // when power is removed
 
     public void onPlayerJoin(ServerPlayerEntity player) {} // player joins server with this power
+    public void onPlayerDisconnect(ServerPlayerEntity player) {} // logout cleanup while retaining assigned power
     public void onPlayerRespawn(ServerPlayerEntity player, ServerPlayerEntity oldPlayer) {} // after respawn
+
+    public void onPlayerDeath(ServerPlayerEntity player) {} // when the player dies, before respawn
 
     public void onAttack(ServerPlayerEntity attacker, Entity target) {} // when player attacks entity
 

@@ -145,33 +145,38 @@ public class DivinityShieldPower extends Power {
                 double playerY = player.getY() + player.getHeight() / 2.0;
                 double playerZ = player.getZ();
 
-                // Dome shell END_ROD particles
-                for (int i = 0; i < 40; i++) {
-                    double theta = Math.random() * 2 * Math.PI;
-                    double phi = Math.acos(2 * Math.random() - 1);
-                    double dx = radius * Math.sin(phi) * Math.cos(theta);
-                    double dy = radius * Math.cos(phi);
-                    double dz = radius * Math.sin(phi) * Math.sin(theta);
-                    if (dy > 0) {
-                        world.spawnParticles(ParticleTypes.END_ROD, playerX + dx, playerY + dy, playerZ + dz, 1, 0, 0, 0, 0);
+                // Ambient shield visuals are emitted every other tick and at a lower sample
+                // count. Collision, healing, and projectile-deflection logic below still runs
+                // every tick, so this is a VFX-only performance change.
+                if ((animationTick & 1) == 0) {
+                    // Dome shell END_ROD particles.
+                    for (int i = 0; i < 32; i++) {
+                        double theta = world.random.nextDouble() * 2 * Math.PI;
+                        double phi = Math.acos(2 * world.random.nextDouble() - 1);
+                        double dx = radius * Math.sin(phi) * Math.cos(theta);
+                        double dy = radius * Math.cos(phi);
+                        double dz = radius * Math.sin(phi) * Math.sin(theta);
+                        if (dy > 0) {
+                            world.spawnParticles(ParticleTypes.END_ROD, playerX + dx, playerY + dy, playerZ + dz, 1, 0, 0, 0, 0);
+                        }
                     }
-                }
 
-                // Equator ring ELECTRIC_SPARK particles
-                double angle = (animationTick % 360) * Math.PI / 180.0;
-                for (int i = 0; i < 10; i++) {
-                    double a = angle + (i * Math.PI * 2 / 10);
-                    double dx = radius * Math.cos(a);
-                    double dz = radius * Math.sin(a);
-                    world.spawnParticles(ParticleTypes.ELECTRIC_SPARK, playerX + dx, playerY, playerZ + dz, 1, 0, 0, 0, 0);
-                }
+                    // Equator ring ELECTRIC_SPARK particles.
+                    double angle = (animationTick % 360) * Math.PI / 180.0;
+                    for (int i = 0; i < 10; i++) {
+                        double a = angle + (i * Math.PI * 2 / 10);
+                        double dx = radius * Math.cos(a);
+                        double dz = radius * Math.sin(a);
+                        world.spawnParticles(ParticleTypes.ELECTRIC_SPARK, playerX + dx, playerY, playerZ + dz, 1, 0, 0, 0, 0);
+                    }
 
-                // Perimeter HAPPY_VILLAGER particles
-                for (int i = 0; i < 20; i++) {
-                    double a = Math.random() * 2 * Math.PI;
-                    double dx = radius * Math.cos(a);
-                    double dz = radius * Math.sin(a);
-                    world.spawnParticles(ParticleTypes.HAPPY_VILLAGER, playerX + dx, player.getY(), playerZ + dz, 1, 0, 0, 0, 0);
+                    // Perimeter HAPPY_VILLAGER particles.
+                    for (int i = 0; i < 14; i++) {
+                        double a = world.random.nextDouble() * 2 * Math.PI;
+                        double dx = radius * Math.cos(a);
+                        double dz = radius * Math.sin(a);
+                        world.spawnParticles(ParticleTypes.HAPPY_VILLAGER, playerX + dx, player.getY(), playerZ + dz, 1, 0, 0, 0, 0);
+                    }
                 }
 
                 AllianceManager allianceManager = AllianceManager.get(player.getEntityWorld().getServer());

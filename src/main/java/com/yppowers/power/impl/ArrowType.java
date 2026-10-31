@@ -8,7 +8,8 @@ public enum ArrowType {
     HOMING("Homing Missile", Items.ENDER_EYE),
     TNT("TNT Arrow", Items.TNT),
     LIGHTNING("Lightning Arrow", Items.LIGHTNING_ROD),
-    ICE_PRISON("Ice Prison", Items.PACKED_ICE);
+    ICE_PRISON("Ice Prison", Items.PACKED_ICE),
+    RAILSHOT("Railshot", Items.NETHER_STAR);
     
     private final String displayName;
     private final Item craftItem;

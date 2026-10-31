@@ -12,7 +12,12 @@ public enum PowerType {
     DELETION("deletion", "Stick of Deletion"),
     FIRE_GOD("fire_god", "Fire God"),
     ICE_EMPEROR("ice_emperor", "Ice Emperor"),
-    THOR("thor", "Thor");
+    THOR("thor", "Thor"),
+    FALLOUT_WARRIOR("fallout_warrior", "Fallout Warrior"),
+    SPIDEY("spidey", "Spidey"),
+    SPIRIT_CHANNELER("spirit_channeler", "Spirit Channeler"),
+    ILLUSIONIST("illusionist", "Illusionist"),
+    KITSUNE("kitsune", "Kitsune");
 
     private final String id;
     private final String displayName;

@@ -9,6 +9,11 @@ import net.minecraft.entity.damage.DamageTypes;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.mob.*;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.SpawnReason;
+import net.minecraft.entity.attribute.EntityAttributes;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.projectile.FireballEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -20,6 +25,12 @@ import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.math.Box;
+import com.yppowers.alliance.AllianceManager;
+import com.yppowers.command.GraceManager;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -27,6 +38,11 @@ import java.util.UUID;
 
 public class FireGodPower extends Power {
     private final Map<UUID, Integer> ghastCooldowns = new HashMap<>();
+    private final Map<UUID, Integer> blazeCooldowns = new HashMap<>();
+    private final Map<UUID, Integer> skeletonCooldowns = new HashMap<>();
+    private static final class OwnedSummon { final MobEntity entity; final UUID owner; final boolean blaze; int ticks;
+        OwnedSummon(MobEntity entity, UUID owner, boolean blaze, int ticks) { this.entity = entity; this.owner = owner; this.blaze = blaze; this.ticks = ticks; } }
+    private final Map<UUID, List<OwnedSummon>> ownedSummons = new HashMap<>();
 
     @Override
     public PowerType getType() {
@@ -38,15 +54,112 @@ public class FireGodPower extends Power {
         if (player.isOnFire()) {
             player.extinguish();
         }
-        player.addStatusEffect(new StatusEffectInstance(StatusEffects.FIRE_RESISTANCE, 40, 0, false, false));
+        // Avoid constructing/re-sending a status effect every tick. Refresh with a short
+        // safety margin, while respecting any equal-or-stronger independent Fire Resistance.
+        StatusEffectInstance fireResistance = player.getStatusEffect(StatusEffects.FIRE_RESISTANCE);
+        if (fireResistance == null || (fireResistance.getAmplifier() == 0 && fireResistance.getDuration() <= 10)) {
+            player.addStatusEffect(new StatusEffectInstance(StatusEffects.FIRE_RESISTANCE, 40, 0, false, false));
+        }
         // MobEntityMixin blocks fresh target assignments and clears stale ones before each mob's
         // AI tick. Avoid a per-player world-wide entity scan here to keep this passive inexpensive.
 
         UUID pId = player.getUuid();
-        if (ghastCooldowns.getOrDefault(pId, 0) > 0) {
-            ghastCooldowns.put(pId, ghastCooldowns.get(pId) - 1);
-        }
+        tickCooldown(ghastCooldowns, pId);
+        tickCooldown(blazeCooldowns, pId);
+        tickCooldown(skeletonCooldowns, pId);
+        tickSummons(player);
     }
+
+
+    @Override
+    public void onSecondaryActivate(ServerPlayerEntity player) {
+        summonFireGodMinions(player, true);
+    }
+
+    @Override
+    public void onTertiaryActivate(ServerPlayerEntity player) {
+        summonFireGodMinions(player, false);
+    }
+
+    private void summonFireGodMinions(ServerPlayerEntity player, boolean blaze) {
+        if (!(player.getEntityWorld() instanceof ServerWorld world)) return;
+        UUID id = player.getUuid();
+        YPConfig cfg = YPConfig.getInstance();
+        Map<UUID, Integer> cooldownMap = blaze ? blazeCooldowns : skeletonCooldowns;
+        int cooldown = cooldownMap.getOrDefault(id, 0);
+        String name = blaze ? "Ember Guard" : "Cinder Sentinel";
+        int cap = blaze ? Math.max(0, cfg.fire_god_blaze_max_active) : Math.max(0, cfg.fire_god_wither_skeleton_max_active);
+        int count = 0;
+        List<OwnedSummon> list = ownedSummons.computeIfAbsent(id, ignored -> new ArrayList<>());
+        list.removeIf(s -> s.entity.isRemoved() || !s.entity.isAlive() || s.ticks <= 0);
+        for (OwnedSummon s : list) if (s.blaze == blaze) count++;
+        if (cooldown > 0) { player.sendMessage(Text.literal(name + " cooldown: " + ((cooldown + 19) / 20) + "s").formatted(Formatting.YELLOW), true); return; }
+        if (cap == 0 || count >= cap) { player.sendMessage(Text.literal("Active " + name + " limit reached.").formatted(Formatting.YELLOW), true); return; }
+        MobEntity mob = blaze ? EntityType.BLAZE.create(world, SpawnReason.TRIGGERED)
+                : EntityType.WITHER_SKELETON.create(world, SpawnReason.TRIGGERED);
+        if (mob == null) { player.sendMessage(Text.literal("The summon could not spawn here.").formatted(Formatting.RED), true); return; }
+        mob.refreshPositionAndAngles(player.getX() + 1.2, player.getY() + 0.4, player.getZ() + 1.2, player.getYaw(), 0);
+        mob.setCustomName(Text.literal(name + " · " + player.getName().getString()).formatted(blaze ? Formatting.GOLD : Formatting.DARK_GRAY));
+        mob.setCustomNameVisible(true);
+        mob.addCommandTag("yppowers_fire_god_summon");
+        mob.addCommandTag("yppowers_owner_" + id);
+        mob.setPersistent();
+        double hp = blaze ? Math.max(1, cfg.fire_god_blaze_max_health) : Math.max(1, cfg.fire_god_wither_skeleton_max_health);
+        if (mob.getAttributeInstance(EntityAttributes.MAX_HEALTH) != null) mob.getAttributeInstance(EntityAttributes.MAX_HEALTH).setBaseValue(hp);
+        mob.setHealth((float) hp);
+        if (mob.getAttributeInstance(EntityAttributes.ATTACK_DAMAGE) != null) {
+            mob.getAttributeInstance(EntityAttributes.ATTACK_DAMAGE).setBaseValue(Math.max(0.1,
+                    blaze ? cfg.fire_god_blaze_attack_damage : cfg.fire_god_wither_skeleton_attack_damage));
+        }
+        world.spawnEntity(mob);
+        int life = blaze ? cfg.fire_god_blaze_lifespan_ticks : cfg.fire_god_wither_skeleton_lifespan_ticks;
+        list.add(new OwnedSummon(mob, id, blaze, Math.max(20, life)));
+        cooldownMap.put(id, Math.max(0, blaze ? cfg.fire_god_blaze_cooldown_ticks : cfg.fire_god_wither_skeleton_cooldown_ticks));
+        world.spawnParticles(blaze ? ParticleTypes.FLAME : ParticleTypes.SOUL_FIRE_FLAME, mob.getX(), mob.getBodyY(0.5), mob.getZ(), 20, .5, .5, .5, .04);
+        world.playSound(null, player.getBlockPos(), blaze ? SoundEvents.ENTITY_BLAZE_AMBIENT : SoundEvents.ENTITY_WITHER_SKELETON_AMBIENT,
+                SoundCategory.PLAYERS, .8f, blaze ? 1.2f : .8f);
+    }
+
+    private void tickSummons(ServerPlayerEntity owner) {
+        List<OwnedSummon> list = ownedSummons.get(owner.getUuid());
+        if (list == null) return;
+        if (!(owner.getEntityWorld() instanceof ServerWorld world)) return;
+        list.removeIf(s -> {
+            if (s.entity.isRemoved() || !s.entity.isAlive() || --s.ticks <= 0) { s.entity.discard(); return true; }
+            if (s.ticks % 10 == 0) {
+                if (GraceManager.isActive(world.getServer())) { s.entity.setTarget(null); return false; }
+                LivingEntity chosen = null;
+                double best = 18.0 * 18.0;
+                AllianceManager alliances = AllianceManager.get(world.getServer());
+                Box area = s.entity.getBoundingBox().expand(18.0);
+                for (LivingEntity candidate : world.getEntitiesByClass(LivingEntity.class, area,
+                        e -> e != owner && e != s.entity && e.isAlive()
+                                && (!(e instanceof ServerPlayerEntity p) || !alliances.isAlly(owner, p)))) {
+                    double d = s.entity.squaredDistanceTo(candidate);
+                    if (d < best) { chosen = candidate; best = d; }
+                }
+                s.entity.setTarget(chosen);
+                if (chosen == null && s.entity.squaredDistanceTo(owner) > 64) s.entity.getNavigation().startMovingTo(owner, 1.1);
+                else if (chosen != null) s.entity.getNavigation().stop();
+            }
+            return false;
+        });
+        if (list.isEmpty()) ownedSummons.remove(owner.getUuid());
+    }
+
+    private static void tickCooldown(Map<UUID, Integer> map, UUID id) {
+        int value = map.getOrDefault(id, 0); if (value > 0) map.put(id, value - 1);
+    }
+
+    private void clearSummons(UUID id) {
+        List<OwnedSummon> list = ownedSummons.remove(id);
+        if (list != null) for (OwnedSummon summon : list) summon.entity.discard();
+        blazeCooldowns.remove(id); skeletonCooldowns.remove(id);
+    }
+
+    @Override public void onPlayerDeath(ServerPlayerEntity player) { clearSummons(player.getUuid()); }
+    @Override public void onPlayerDisconnect(ServerPlayerEntity player) { clearSummons(player.getUuid()); }
+    @Override public void onRemove(ServerPlayerEntity player) { clearSummons(player.getUuid()); ghastCooldowns.remove(player.getUuid()); }
 
     @Override
     public boolean isFireImmune(ServerPlayerEntity player) {

@@ -1,9 +1,14 @@
 package com.yppowers.network;
 
+import com.yppowers.command.GraceManager;
+import com.yppowers.config.YPConfig;
+import com.yppowers.energy.EnergyManager;
 import com.yppowers.power.Power;
 import com.yppowers.power.PowerManager;
 import com.yppowers.power.PowerType;
 import com.yppowers.power.impl.ShadowArcherPower;
+import com.yppowers.power.impl.BootsOfTheSkyPower;
+import com.yppowers.power.impl.IceEmperorPower;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.network.RegistryByteBuf;
@@ -63,6 +68,65 @@ public final class YPNetworking {
         @Override public Id<? extends CustomPayload> getId() { return ID; }
     }
 
+    /** Local Shadow Archer camera state derived from the active disguise entity. */
+    public record SyncShadowArcherMorphViewPayload(boolean morphed, int disguiseEntityId, float eyeHeight, float entityHeight) implements CustomPayload {
+        public static final Id<SyncShadowArcherMorphViewPayload> ID = new Id<>(Identifier.of("yppowers", "sync_shadow_archer_morph_view"));
+        public static final PacketCodec<RegistryByteBuf, SyncShadowArcherMorphViewPayload> CODEC = PacketCodec.of(
+                (payload, buf) -> {
+                    buf.writeBoolean(payload.morphed());
+                    buf.writeVarInt(payload.disguiseEntityId());
+                    buf.writeFloat(payload.eyeHeight());
+                    buf.writeFloat(payload.entityHeight());
+                },
+                buf -> new SyncShadowArcherMorphViewPayload(buf.readBoolean(), buf.readVarInt(), buf.readFloat(), buf.readFloat()));
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+
+    /** Server-authoritative visual state for the muted appearance applied to players caught in Time Stop. */
+    public record SyncTimeStopVisualPayload(int entityId, boolean frozen) implements CustomPayload {
+        public static final Id<SyncTimeStopVisualPayload> ID = new Id<>(Identifier.of("yppowers", "sync_time_stop_visual"));
+        public static final PacketCodec<RegistryByteBuf, SyncTimeStopVisualPayload> CODEC = PacketCodec.of(
+                (payload, buf) -> { buf.writeVarInt(payload.entityId()); buf.writeBoolean(payload.frozen()); },
+                buf -> new SyncTimeStopVisualPayload(buf.readVarInt(), buf.readBoolean()));
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+
+    /** Short-lived text shown above the custom Energy HUD for dangerous ability warnings. */
+    public record SyncHudWarningPayload(String text, int ticks) implements CustomPayload {
+        public static final Id<SyncHudWarningPayload> ID = new Id<>(Identifier.of("yppowers", "sync_hud_warning"));
+        public static final PacketCodec<RegistryByteBuf, SyncHudWarningPayload> CODEC = PacketCodec.of(
+                (payload, buf) -> { buf.writeString(payload.text(), 128); buf.writeVarInt(payload.ticks()); },
+                buf -> new SyncHudWarningPayload(buf.readString(128), buf.readVarInt()));
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+
+    /** Server-authoritative Energy HUD snapshot for the local player. */
+    /** Selected Ice Emperor form replicated to online clients for cosmetic/UI synchronization. */
+    public record SyncIceEmperorFormPayload(String playerUuid, String form, boolean active) implements CustomPayload {
+        public static final Id<SyncIceEmperorFormPayload> ID = new Id<>(Identifier.of("yppowers", "sync_ice_emperor_form"));
+        public static final PacketCodec<RegistryByteBuf, SyncIceEmperorFormPayload> CODEC = PacketCodec.of(
+                (payload, buf) -> {
+                    buf.writeString(payload.playerUuid(), 36);
+                    buf.writeString(payload.form(), 16);
+                    buf.writeBoolean(payload.active());
+                },
+                buf -> new SyncIceEmperorFormPayload(buf.readString(36), buf.readString(16), buf.readBoolean()));
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+
+    public record SyncEnergyPayload(double energy, double maxEnergy, int bleedingTicks, boolean globalHealthEnabled) implements CustomPayload {
+        public static final Id<SyncEnergyPayload> ID = new Id<>(Identifier.of("yppowers", "sync_energy"));
+        public static final PacketCodec<RegistryByteBuf, SyncEnergyPayload> CODEC = PacketCodec.of(
+                (payload, buf) -> {
+                    buf.writeDouble(payload.energy());
+                    buf.writeDouble(payload.maxEnergy());
+                    buf.writeVarInt(payload.bleedingTicks());
+                    buf.writeBoolean(payload.globalHealthEnabled());
+                },
+                buf -> new SyncEnergyPayload(buf.readDouble(), buf.readDouble(), buf.readVarInt(), buf.readBoolean()));
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+
     private YPNetworking() {}
 
     public static void registerServerReceivers() {
@@ -72,6 +136,11 @@ public final class YPNetworking {
         PayloadTypeRegistry.playS2C().register(OpenMorphMenuPayload.ID, OpenMorphMenuPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(SyncShadowArcherPayload.ID, SyncShadowArcherPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(SyncShadowArcherMorphCatalogPayload.ID, SyncShadowArcherMorphCatalogPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(SyncShadowArcherMorphViewPayload.ID, SyncShadowArcherMorphViewPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(SyncTimeStopVisualPayload.ID, SyncTimeStopVisualPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(SyncIceEmperorFormPayload.ID, SyncIceEmperorFormPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(SyncEnergyPayload.ID, SyncEnergyPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(SyncHudWarningPayload.ID, SyncHudWarningPayload.CODEC);
 
         ServerPlayNetworking.registerGlobalReceiver(KeybindPayload.ID, (payload, context) -> {
             int keyType = payload.keyType();
@@ -80,20 +149,65 @@ public final class YPNetworking {
                 PowerManager manager = PowerManager.get(context.server());
                 PowerType type = manager.getPowerType(player.getUuid());
                 Power power = type == null ? null : manager.getPowerInstance(type);
-                if (power == null) return;
+                if (power == null || keyType < 0 || keyType > 9) return;
+                if (GraceManager.blockAbility(player)) return;
+                EnergyManager energyManager = EnergyManager.get(context.server());
+                if (type == PowerType.ICE_EMPEROR && keyType != 9
+                        && energyManager.getIceHeatBlastLockoutTicks(player.getUuid()) > 0) {
+                    int remaining = energyManager.getIceHeatBlastLockoutTicks(player.getUuid());
+                    player.sendMessage(net.minecraft.text.Text.literal("Ice Emperor abilities locked for "
+                            + ((remaining + 19) / 20) + "s after Heat Blast.").formatted(net.minecraft.util.Formatting.YELLOW), true);
+                    return;
+                }
+                if (keyType == 7) {
+                    if (type == PowerType.BOOTS_SKY && power instanceof BootsOfTheSkyPower boots) {
+                        boots.toggleFeatherFalling(player);
+                    }
+                    return;
+                }
+                if (keyType == 9) {
+                    if (type == PowerType.ICE_EMPEROR && power instanceof IceEmperorPower ice
+                            && energyManager.tryActivateIceHeatBlast(player)) {
+                        ice.activateHeatBlast(player);
+                    }
+                    return;
+                }
+                if (keyType == 6) {
+                    if (type == PowerType.ICE_EMPEROR && power instanceof IceEmperorPower iceEmperor) {
+                        iceEmperor.cycleForm(player);
+                    }
+                    return;
+                }
                 if (keyType == 2 && power instanceof ShadowArcherPower) {
-                    // The request itself arrived over YP Powers' registered keybind payload,
-                    // so this is a modded client. Send the paired screen payload directly;
-                    // relying on canSend here can suppress the menu-open action on otherwise
-                    // compatible 1.21.11 connections.
+                    // Opening the morph selector is UI, not a morph/ability activation. Charge
+                    // Energy only when a specific form is requested by MorphRequestPayload.
                     LOGGER.info("Sending Shadow Archer morph menu request response to {}", player.getUuid().toString());
                     ServerPlayNetworking.send(player, new OpenMorphMenuPayload());
                     return;
                 }
+                // The client's jump double-tap detector sends keyType 5 regardless of power.
+                // Unsupported powers and non-Boots owners must not lose Energy for that signal.
                 if (keyType == 5) {
-                    if (type == PowerType.BOOTS_SKY) power.onPrimaryActivate(player);
+                    if (type == PowerType.BOOTS_SKY
+                            && EnergyManager.get(context.server()).trySpendAbility(player, keyType)) {
+                        power.onPrimaryActivate(player);
+                    }
                     return;
                 }
+                if (!hasAbilityHandler(power, keyType)) return;
+                if (!power.canUseKey(player, keyType)) return;
+                if (keyType == 2 && type == PowerType.ICE_EMPEROR && power instanceof IceEmperorPower iceEmperor) {
+                    EnergyManager.IceGuardSummonResult result = energyManager.trySpendIceGuardSummonEnergy(player);
+                    if (result == EnergyManager.IceGuardSummonResult.DENIED) return;
+                    iceEmperor.onTertiaryActivateWithEnergyState(player,
+                            result == EnergyManager.IceGuardSummonResult.LOW_ENERGY);
+                    return;
+                }
+                if (keyType == 2 && type == PowerType.SPIRIT_CHANNELER && power instanceof com.yppowers.power.impl.SpiritChannelerPower spirit) {
+                    spirit.activateRestlessShadows(player);
+                    return;
+                }
+                if (!energyManager.trySpendAbility(player, keyType)) return;
                 switch (keyType) {
                     case 0 -> power.onPrimaryActivate(player);
                     case 1 -> power.onSecondaryActivate(player);
@@ -111,10 +225,53 @@ public final class YPNetworking {
                 ServerPlayerEntity player = context.player();
                 PowerManager manager = PowerManager.get(context.server());
                 if (manager.getPowerType(player.getUuid()) != PowerType.SHADOW_ARCHER) return;
+                if (GraceManager.blockAbility(player)) return;
+                if (!EnergyManager.get(context.server()).trySpendAbility(player, 2)) return;
                 Power power = manager.getPowerInstance(PowerType.SHADOW_ARCHER);
                 if (power instanceof ShadowArcherPower archer) archer.requestMorph(player, requested);
             });
         });
+    }
+
+    private static boolean hasAbilityHandler(Power power, int keyType) {
+        String name = switch (keyType) {
+            case 0 -> "onPrimaryActivate";
+            case 1 -> "onSecondaryActivate";
+            case 2 -> "onTertiaryActivate";
+            case 3 -> "onQuaternaryActivate";
+            case 4 -> "onAlternateActivate";
+            default -> "";
+        };
+        if (name.isEmpty()) return false;
+        try {
+            return power.getClass().getMethod(name, ServerPlayerEntity.class).getDeclaringClass() != Power.class;
+        } catch (ReflectiveOperationException ignored) {
+            return false;
+        }
+    }
+
+    public static void syncIceEmperorForm(net.minecraft.server.MinecraftServer server, java.util.UUID playerId, String form, boolean active) {
+        if (server == null || playerId == null) return;
+        SyncIceEmperorFormPayload payload = new SyncIceEmperorFormPayload(playerId.toString(), form == null ? "ARMOURED" : form, active);
+        for (ServerPlayerEntity recipient : server.getPlayerManager().getPlayerList()) {
+            if (ServerPlayNetworking.canSend(recipient, SyncIceEmperorFormPayload.ID)) {
+                ServerPlayNetworking.send(recipient, payload);
+            }
+        }
+    }
+
+    public static void syncIceEmperorFormsTo(ServerPlayerEntity recipient) {
+        if (recipient == null || recipient.getEntityWorld().getServer() == null
+                || !ServerPlayNetworking.canSend(recipient, SyncIceEmperorFormPayload.ID)) return;
+        PowerManager manager = PowerManager.get(recipient.getEntityWorld().getServer());
+        for (ServerPlayerEntity online : recipient.getEntityWorld().getServer().getPlayerManager().getPlayerList()) {
+            boolean active = YPConfig.getInstance().ice_emperor_forms_enabled
+                    && !GraceManager.isActive(recipient.getEntityWorld().getServer())
+                    && manager.getPowerType(online.getUuid()) == PowerType.ICE_EMPEROR
+                    && manager.isPowerEnabled(online, PowerType.ICE_EMPEROR);
+            String form = manager.getIceEmperorForm(online.getUuid());
+            ServerPlayNetworking.send(recipient, new SyncIceEmperorFormPayload(online.getUuid().toString(), form, active));
+        }
     }
 
     public static void syncFireGod(ServerPlayerEntity player, boolean hasFireGod) {
@@ -129,5 +286,36 @@ public final class YPNetworking {
         if (player == null || player.getEntityWorld().getServer() == null) return;
         java.util.Set<String> ids = PowerManager.get(player.getEntityWorld().getServer()).getShadowArcherKills(player.getUuid());
         ServerPlayNetworking.send(player, new SyncShadowArcherMorphCatalogPayload(String.join("\n", ids)));
+    }
+
+    public static void syncShadowArcherMorphView(ServerPlayerEntity player, boolean morphed, int disguiseEntityId,
+                                                  float eyeHeight, float entityHeight) {
+        if (player == null) return;
+        float safeEyeHeight = Float.isFinite(eyeHeight) ? Math.max(0.1F, Math.min(8.0F, eyeHeight)) : 1.62F;
+        float safeEntityHeight = Float.isFinite(entityHeight) ? Math.max(0.1F, Math.min(16.0F, entityHeight)) : 1.8F;
+        int safeEntityId = morphed ? Math.max(0, disguiseEntityId) : -1;
+        ServerPlayNetworking.send(player, new SyncShadowArcherMorphViewPayload(morphed, safeEntityId, safeEyeHeight, safeEntityHeight));
+    }
+
+    public static void syncHudWarning(ServerPlayerEntity player, String text, int ticks) {
+        if (player == null) return;
+        ServerPlayNetworking.send(player, new SyncHudWarningPayload(text == null ? "" : text, Math.max(0, ticks)));
+    }
+
+    public static void broadcastTimeStopVisual(net.minecraft.server.MinecraftServer server, int entityId, boolean frozen) {
+        if (server == null) return;
+        SyncTimeStopVisualPayload payload = new SyncTimeStopVisualPayload(entityId, frozen);
+        for (ServerPlayerEntity recipient : server.getPlayerManager().getPlayerList()) {
+            ServerPlayNetworking.send(recipient, payload);
+        }
+    }
+
+    public static void syncTimeStopVisualTo(ServerPlayerEntity recipient, int entityId) {
+        if (recipient != null) ServerPlayNetworking.send(recipient, new SyncTimeStopVisualPayload(entityId, true));
+    }
+
+    public static void syncEnergy(ServerPlayerEntity player, double energy, double maxEnergy, int bleedingTicks, boolean globalHealthEnabled) {
+        if (player != null) ServerPlayNetworking.send(player,
+                new SyncEnergyPayload(energy, maxEnergy, Math.max(0, bleedingTicks), globalHealthEnabled));
     }
 }
