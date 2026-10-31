@@ -44,7 +44,7 @@ The player can then use the power's abilities with the keybinds below.
 | Stick of Deletion | `deletion` | A stick that launches enemies across the map |
 | Fire God | `fire_god` | Fire immunity, Nether mobs ignore you, Ghast fireballs |
 | Ice Emperor | `ice_emperor` | Frost aura and a freezing area attack |
-| Thor | `thor` | Enchanted mace with Riptide, a throw, and lightning + crater |
+| Thor | `thor` | Enchanted mace with Riptide anywhere and permanent Speed II |
 
 ### Divinity Shield
 - **`G` — Barrier Dome:** Raises a 12-block dome for 15 seconds. Enemies and projectiles that aren't allied can't get inside.
@@ -114,9 +114,8 @@ The player can then use the power's abilities with the keybinds below.
 
 ### Thor
 - **Right-click (hold) — Riptide:** Hold and release right-click with the mace to launch yourself like a Riptide III trident, anywhere — no water or rain required.
-- **`G` — Throw:** Throws the mace. Where it lands it strikes lightning and digs a crater, then the mace flies back to you like a Loyalty trident, smashing through blocks as it returns. Press `G` again while it's still flying to teleport to it and call it back to your hand.
-- Comes with a mace (Density 5, Wind Burst 2, Mending, Unbreaking 3) that you keep when you die.
-- The crater and return tunnel never break bedrock, storage, or unbreakable blocks, and block breaking can be turned off in the config.
+- **Permanent Speed II** while assigned.
+- Comes with a mace (Density 5, Wind Burst 1, Mending, Unbreaking 3) that you keep when you die.
 
 ---
 
@@ -190,13 +189,6 @@ Times are measured in **ticks**, where 20 ticks equal 1 second. Setting a cooldo
 | `ice_emperor_cooldown_ticks` | `600` (30 s) |
 | `thor_riptide_min_charge_ticks` | `10` (0.5 s) |
 | `thor_riptide_strength` | `3.0` |
-| `thor_throw_speed` | `2.2` |
-| `thor_crater_enabled` | `true` |
-| `thor_crater_radius` | `3` |
-| `thor_crater_depth` | `2` |
-| `thor_return_break_radius` | `1` |
-| `thor_impact_damage` | `6.0` (3 hearts) |
-| `thor_impact_radius` | `3.0` |
 
 ---
 

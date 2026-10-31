@@ -75,22 +75,10 @@ public abstract class LivingEntityMixin {
         if (target.getEntityWorld().isClient()) return amount;
         DamageSource source = yppowers$currentDamageSource;
         if (source == null) return amount;
-        if (target instanceof ServerPlayerEntity playerTarget
-                && playerTarget.getEntityWorld().getServer() != null
-                && PowerManager.get(playerTarget.getEntityWorld().getServer()).getPowerType(playerTarget.getUuid()) == PowerType.THOR
-                && (source.isOf(net.minecraft.entity.damage.DamageTypes.LIGHTNING_BOLT)
-                    || source.isIn(DamageTypeTags.IS_LIGHTNING)
-                    || source.getAttacker() instanceof net.minecraft.entity.LightningEntity
-                    || source.getSource() instanceof net.minecraft.entity.LightningEntity)) {
-            // Thor's explicitly requested lightning immunity is defensive, not an activatable
-            // ability, so Grace must not remove it.
-            return 0.0f;
-        }
         if (target.getEntityWorld().getServer() != null
                 && GraceManager.isActive(target.getEntityWorld().getServer())) {
             // Grace suppresses power-based offensive bonuses and most defensive power effects
-            // while leaving ordinary Minecraft damage untouched. Thor's lightning immunity is
-            // the explicit exception above; PvP itself is cancelled before this point.
+            // while leaving ordinary Minecraft damage untouched; PvP itself is cancelled before this point.
             return Math.max(0.0f, amount);
         }
 

@@ -15,7 +15,7 @@ import java.io.IOException;
 public class YPConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static YPConfig instance;
-    private static final int CURRENT_CONFIG_VERSION = 11;
+    private static final int CURRENT_CONFIG_VERSION = 12;
     private static final File FILE = FabricLoader.getInstance().getConfigDir().resolve("yppowers_config.json").toFile();
 
     // Incremented when config migrations change previously generated defaults.
@@ -100,7 +100,7 @@ public class YPConfig {
     public int thor_mace_mending_level = 1;
     public int thor_mace_vanishing_curse_level = 1;
     public int thor_mace_fire_aspect_level = 2;
-    public int thor_mace_wind_burst_level = 3;
+    public int thor_mace_wind_burst_level = 1;
     public int thor_mace_density_level = 5;
     public int thor_mace_breach_level = 4;
     public int thor_mace_sharpness_level = 5;
@@ -125,8 +125,8 @@ public class YPConfig {
 
     public int thor_hammer_throw_cooldown_ticks = 100;
     // New Mjölnir throw/return controls requested for the Thor rework.
-    public int thor_riptide_min_charge_ticks = 12;
-    public double thor_riptide_strength = 2.35;
+    public int thor_riptide_min_charge_ticks = 10;
+    public double thor_riptide_strength = 3.0;
     public double thor_throw_speed = 1.65;
     public boolean thor_crater_enabled = true;
     public int thor_crater_radius = 4;
@@ -540,8 +540,8 @@ public class YPConfig {
         poseidon_tsunami_stun_ticks = clamp(poseidon_tsunami_stun_ticks, 0, 1200, 50);
         poseidon_tsunami_buff_ticks = clamp(poseidon_tsunami_buff_ticks, 1, 12000, 600);
         poseidon_tsunami_buff_regeneration_amplifier = clamp(poseidon_tsunami_buff_regeneration_amplifier, 0, 9, 2);
-        thor_riptide_min_charge_ticks = clamp(thor_riptide_min_charge_ticks, 0, 1200, 12);
-        thor_riptide_strength = clamp(thor_riptide_strength, 0.1, 10.0, 2.35);
+        thor_riptide_min_charge_ticks = clamp(thor_riptide_min_charge_ticks, 0, 1200, 10);
+        thor_riptide_strength = clamp(thor_riptide_strength, 0.1, 10.0, 3.0);
         thor_throw_speed = clamp(thor_throw_speed, 0.1, 10.0, 1.65);
         thor_crater_radius = clamp(thor_crater_radius, 1, 12, 4);
         thor_crater_depth = clamp(thor_crater_depth, 1, 12, 3);
@@ -595,6 +595,11 @@ public class YPConfig {
                         // Upgrade only the old shipped defaults. Non-default values remain admin choices.
                         if (Math.abs(loaded.goat_jump_multiplier - 2.2) < 0.000001) loaded.goat_jump_multiplier = 1.25;
                         if (Math.abs(loaded.goat_max_speed - 2.2) < 0.000001) loaded.goat_max_speed = 5.0;
+                    }
+                    if (loadedVersion < 12) {
+                        if (loaded.thor_mace_wind_burst_level == 3) loaded.thor_mace_wind_burst_level = 1;
+                        if (loaded.thor_riptide_min_charge_ticks == 12) loaded.thor_riptide_min_charge_ticks = 10;
+                        if (Math.abs(loaded.thor_riptide_strength - 2.35) < 0.000001) loaded.thor_riptide_strength = 3.0;
                     }
                     loaded.config_version = CURRENT_CONFIG_VERSION;
                     defaults = loaded;
