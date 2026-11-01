@@ -129,14 +129,12 @@ The shared default activation slots are **G (Primary), H (Secondary), V (Tertiar
 
 ## 12. Thor — `thor`
 
-**Role:** Soulbound Mjölnir, lightning impact, and high-momentum launch combat.
+**Role:** Soulbound mace with out-of-water Riptide III mobility and permanent Speed II.
 
-- **G — Mjölnir:** Throws the marked soulbound mace; press G again while the hammer is deployed to blink to it and recall it. Impact can strike lightning, damage nearby enemies and create a configured crater. The return path can pass through ordinary blocks according to the existing implementation.
-- **H — Ancient Rage:** Activates Thor's timed strength/combat buff.
-- **R — Enchantment mode:** Cycles supported mace enchantment modes.
-- **Storm Launch:** The existing guided charge/ready/launch system supports buffered launch input and chained launches while preserving its established timing, movement and Energy costs.
-- **Heavy Core marker:** A protected marker identifies the deployed weapon location and follows the existing removal/recall/death cleanup rules.
-- **Tuning:** See `THOR_CONFIGURATION.md` and `thor_*` settings.
+- **Right-click (hold) — Riptide:** Hold and release right-click with the soulbound mace to launch like a Riptide III trident anywhere (no water or rain required, no cooldown or Energy cost).
+- **Speed II:** Grants infinite Speed II while assigned.
+- **Soulbound Mace:** Fixed Density 5, Wind Burst 1, Mending, and Unbreaking 3; never drops on death and re-issues on assign/join/respawn.
+- **Tuning:** `thor_riptide_min_charge_ticks` and `thor_riptide_strength` in `yppowers_config.json`.
 
 ## 13. Fallout Warrior — `fallout_warrior`
 
