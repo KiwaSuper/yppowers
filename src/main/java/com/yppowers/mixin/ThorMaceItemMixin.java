@@ -8,6 +8,8 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.item.consume.UseAction;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.Vec3d;
@@ -48,7 +50,7 @@ public abstract class ThorMaceItemMixin {
     @Inject(method = "getUseAction", at = @At("HEAD"), cancellable = true)
     private void yppowers$thorMaceUseAction(ItemStack stack, CallbackInfoReturnable<UseAction> cir) {
         if (yppowers$isThorMace(stack)) {
-            cir.setReturnValue(UseAction.SPEAR);
+            cir.setReturnValue(UseAction.TRIDENT);
         }
     }
 
@@ -61,12 +63,12 @@ public abstract class ThorMaceItemMixin {
         if (charge < YPConfig.getInstance().thor_riptide_min_charge_ticks) {
             return;
         }
-        yppowers$launchRiptide(player, stack);
+        yppowers$launchRiptide(world, player, stack);
         cir.setReturnValue(true);
     }
 
     @Unique
-    private static void yppowers$launchRiptide(PlayerEntity player, ItemStack stack) {
+    private static void yppowers$launchRiptide(World world, PlayerEntity player, ItemStack stack) {
         // Riptide III launch, minus the water requirement. Runs on both sides like the vanilla
         // trident so the spin and motion are client-predicted.
         float strength = (float) YPConfig.getInstance().thor_riptide_strength;
@@ -74,5 +76,12 @@ public abstract class ThorMaceItemMixin {
         player.setVelocity(look.x * strength, look.y * strength, look.z * strength);
         player.velocityDirty = true;
         player.useRiptide(20, 8.0f + 3.0f, stack);
+        world.playSoundFromEntity(
+                null,
+                player,
+                SoundEvents.ITEM_TRIDENT_RIPTIDE_3.value(),
+                SoundCategory.PLAYERS,
+                1.0f,
+                1.0f);
     }
 }
