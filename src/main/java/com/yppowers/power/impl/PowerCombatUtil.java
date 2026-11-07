@@ -6,6 +6,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.entity.mob.Monster;
 import java.util.UUID;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.Box;
@@ -19,17 +20,43 @@ final class PowerCombatUtil {
         if (owner == null || target == null || target == owner || target.isRemoved() || !target.isAlive()) return false;
         if (owner.getEntityWorld().getServer() == null || GraceManager.isActive(owner.getEntityWorld().getServer())) return false;
         if (target instanceof ServerPlayerEntity other && AllianceManager.get(owner.getEntityWorld().getServer()).isAlly(owner, other)) return false;
-        if (target instanceof MobEntity mob) {
-            for (String tag : mob.getCommandTags()) {
-                if (!tag.startsWith("yppowers_owner_")) continue;
-                try {
-                    UUID ownerId = UUID.fromString(tag.substring("yppowers_owner_".length()));
-                    ServerPlayerEntity minionOwner = owner.getEntityWorld().getServer().getPlayerManager().getPlayer(ownerId);
-                    if (minionOwner != null && (minionOwner == owner || AllianceManager.get(owner.getEntityWorld().getServer()).isAlly(owner, minionOwner))) return false;
-                } catch (IllegalArgumentException ignored) { }
-            }
-        }
+        if (isFriendlyMinion(owner, target)) return false;
         return true;
+    }
+
+    /** True for summoned minions (tagged yppowers_owner_*) that belong to the owner or one of the owner's allies. */
+    static boolean isFriendlyMinion(ServerPlayerEntity owner, Entity target) {
+        if (owner == null || !(target instanceof MobEntity mob) || owner.getEntityWorld().getServer() == null) return false;
+        for (String tag : mob.getCommandTags()) {
+            if (!tag.startsWith("yppowers_owner_")) continue;
+            try {
+                UUID ownerId = UUID.fromString(tag.substring("yppowers_owner_".length()));
+                ServerPlayerEntity minionOwner = owner.getEntityWorld().getServer().getPlayerManager().getPlayer(ownerId);
+                if (ownerId.equals(owner.getUuid())) return true;
+                if (minionOwner != null && AllianceManager.get(owner.getEntityWorld().getServer()).isAlly(owner, minionOwner)) return true;
+            } catch (IllegalArgumentException ignored) { }
+        }
+        return false;
+    }
+
+    /** Shared minion targeting: whoever last hit the owner, then the owner's victim, then the nearest real threat. */
+    static LivingEntity pickDefenseTarget(ServerPlayerEntity owner, double radius) {
+        if (!(owner.getEntityWorld() instanceof ServerWorld world) || owner.getEntityWorld().getServer() == null
+                || GraceManager.isActive(owner.getEntityWorld().getServer())) return null;
+        LivingEntity attacker = owner.getAttacker();
+        if (attacker != null && attacker != owner && attacker.isAlive() && canHarm(owner, attacker)) return attacker;
+        LivingEntity victim = owner.getAttacking();
+        if (victim != null && victim != owner && victim.isAlive() && canHarm(owner, victim)) return victim;
+        LivingEntity best = null; double bestDistance = radius * radius;
+        for (LivingEntity e : world.getEntitiesByClass(LivingEntity.class, owner.getBoundingBox().expand(radius),
+                x -> x != owner && x.isAlive() && canHarm(owner, x))) {
+            boolean threat = e instanceof Monster || e instanceof ServerPlayerEntity
+                    || (e instanceof MobEntity mob && mob.getTarget() == owner);
+            if (!threat) continue;
+            double d = owner.squaredDistanceTo(e);
+            if (d < bestDistance) { best = e; bestDistance = d; }
+        }
+        return best;
     }
 
     static LivingEntity nearestTarget(ServerPlayerEntity owner, double radius) {

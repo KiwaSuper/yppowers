@@ -8,6 +8,8 @@ import com.yppowers.power.PowerType;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.Entity;
+import java.util.concurrent.ThreadLocalRandom;
+import net.minecraft.particle.BlockStateParticleEffect;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.SpawnReason;
@@ -41,9 +43,23 @@ public final class IllusionistPower extends Power {
     private record SavedBlock(ServerWorld world, BlockPos pos, BlockState state) {}
     private static final class Erasure { final List<SavedBlock> blocks; int ticks;
         Erasure(List<SavedBlock> blocks,int ticks){this.blocks=blocks;this.ticks=ticks;} }
-    private static final class PullState { final UUID owner; final ServerWorld world; final Vec3d center; final List<FallingBlockEntity> blocks;
-        final Set<UUID> captured=new HashSet<>(); int ticks;
-        PullState(UUID owner,ServerWorld world,Vec3d center,List<FallingBlockEntity> blocks,int ticks){this.owner=owner;this.world=world;this.center=center;this.blocks=blocks;this.ticks=ticks;} }
+    /** Celestial Pull: a hovering moon, a weightless area, a gravity well, and a staged crater blast. */
+    private static final class PullState {
+        final UUID owner; final ServerWorld world; final Vec3d center; final Vec3d moon;
+        final double moonRadius, craterRadius, weightlessRadius, moonHeight;
+        final List<FallingBlockEntity> blocks=new ArrayList<>();
+        final ArrayDeque<BlockPos> pending=new ArrayDeque<>();
+        final Set<UUID> captured=new HashSet<>();
+        final Set<UUID> weightless=new HashSet<>();
+        int ticks; int age; int blastAge=-1;
+        int assembleBatch=14, removeBatch=40, totalPlanned;
+        PullState(UUID owner,ServerWorld world,Vec3d center,Vec3d moon,double moonRadius,double moonHeight,double craterRadius,double weightlessRadius,int ticks){
+            this.owner=owner;this.world=world;this.center=center;this.moon=moon;this.moonRadius=moonRadius;this.moonHeight=moonHeight;
+            this.craterRadius=craterRadius;this.weightlessRadius=weightlessRadius;this.ticks=ticks;
+        } }
+    private static final int CRATER_TICKS=16;
+    /** Entities whose gravity could not be restored yet (unloaded chunk, offline player); retried until found. */
+    private static final Map<UUID,Integer> PENDING_GRAVITY_RESTORE=new HashMap<>();
 
     private static final Map<UUID, Erasure> ACTIVE_ERASURES = new HashMap<>();
     private static final Map<UUID, PullState> ACTIVE_PULLS = new HashMap<>();
@@ -89,6 +105,8 @@ public final class IllusionistPower extends Power {
         ACTIVE_ERASURES.put(owner,new Erasure(saved,Math.max(1,YPConfig.getInstance().illusionist_spatial_erasure_duration_ticks)));
         erasureCooldowns.put(owner,Math.max(0,YPConfig.getInstance().illusionist_spatial_erasure_cooldown_ticks));
         world.spawnParticles(ParticleTypes.PORTAL,center.getX()+.5,center.getY()+.5,center.getZ()+.5,70,1.5,1.5,1.5,.35);
+        EpicVfx.activation(world,center.getX()+.5,center.getY(),center.getZ()+.5,1.4);
+        EpicVfx.implosion(world,ParticleTypes.REVERSE_PORTAL,center.getX()+.5,center.getY()+.5,center.getZ()+.5,5.0,24,.3);
         world.playSound(null,center,SoundEvents.BLOCK_END_PORTAL_SPAWN,SoundCategory.PLAYERS,1,.8f);
         return true;
     }
@@ -114,7 +132,7 @@ public final class IllusionistPower extends Power {
         Vec3d start=player.getEyePos(),dir=PowerCombatUtil.safeLook(player);
         Box box=player.getBoundingBox().stretch(dir.multiply(range)).expand(1.2);
         Entity best=null;double bestDistance=range;double bestDot=.94;
-        for(Entity e:world.getOtherEntities(player,box,x->x.isAlive()&&(x instanceof LivingEntity||x instanceof ItemEntity||x instanceof ExperienceOrbEntity))){
+        for(Entity e:world.getOtherEntities(player,box,x->x.isAlive()&&(x instanceof LivingEntity||x instanceof ItemEntity||x instanceof ExperienceOrbEntity)&&!(x instanceof ServerPlayerEntity ally&&AllianceManager.get(world.getServer()).isAlly(player,ally)))){
             Vec3d toward=e.getBoundingBox().getCenter().subtract(start);double d=toward.length();if(d<.1||d>range)continue;
             double dot=dir.dotProduct(toward.normalize());if(dot>bestDot||Math.abs(dot-bestDot)<1e-4&&d<bestDistance){best=e;bestDot=dot;bestDistance=d;}
         }
@@ -128,7 +146,7 @@ public final class IllusionistPower extends Power {
     private void releaseGrip(ServerPlayerEntity player,boolean thrown){
         UUID id=player.getUuid();Entity target=grips.remove(id);
         gripDistances.remove(id);
-        if(target!=null&&!target.isRemoved()&&thrown){Vec3d v=PowerCombatUtil.safeLook(player).multiply(Math.max(0.1,YPConfig.getInstance().illusionist_grip_throw_multiplier));target.setVelocity(v);target.velocityDirty=true;
+        if(target!=null&&!target.isRemoved()&&thrown){Vec3d v=PowerCombatUtil.safeLook(player).multiply(Math.max(0.1,YPConfig.getInstance().illusionist_grip_throw_multiplier));target.setVelocity(v);((com.yppowers.mixin.EntityVelocityAccessor) (Object) target).invokeYppowersScheduleVelocityUpdate();
             if(target instanceof LivingEntity living)living.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOW_FALLING,20,0,false,false));
             player.sendMessage(Text.literal("Telekinetic throw released."),true);
         }
@@ -144,17 +162,47 @@ public final class IllusionistPower extends Power {
         int ground=world.getTopY(Heightmap.Type.MOTION_BLOCKING,targetPos.getX(),targetPos.getZ());
         Vec3d center=new Vec3d(targetPos.getX()+.5,Math.max(world.getBottomY()+1,ground),targetPos.getZ()+.5);
         if(!world.getWorldBorder().contains(BlockPos.ofFloored(center))){player.sendMessage(Text.literal("Celestial Pull target is outside the world border."),true);return;}
-        List<FallingBlockEntity> falling=new ArrayList<>();
-        for(int dx=-2;dx<=2;dx++)for(int dy=-1;dy<=1;dy++)for(int dz=-2;dz<=2;dz++){
-            if(dx*dx+dy*dy+dz*dz>6)continue;
-            BlockState state=((dx+dy+dz)&1)==0?Blocks.BLACKSTONE.getDefaultState():Blocks.MAGMA_BLOCK.getDefaultState();
-            BlockPos spawnPos=BlockPos.ofFloored(center.x+dx,center.y+25+dy,center.z+dz);
-            FallingBlockEntity fallingBlock=FallingBlockEntity.spawnFromBlock(world,spawnPos,state);
-            if(fallingBlock!=null){fallingBlock.setDestroyedOnLanding();fallingBlock.setVelocity(dx*.015,-.05, dz*.015);falling.add(fallingBlock);}
+        YPConfig cfg=YPConfig.getInstance();
+        double moonRadius=Math.max(2.0,Math.min(14.0,cfg.illusionist_celestial_moon_radius*Math.max(0.5,cfg.illusionist_celestial_moon_scale)));
+        // Keep the underside well above the target however large the moon is.
+        double moonHeight=Math.max(Math.max(10.0,cfg.illusionist_celestial_moon_height),moonRadius*2.8);
+        double maxMoonY=world.getBottomY()+world.getHeight()-moonRadius-2;
+        Vec3d moon=new Vec3d(center.x,Math.min(center.y+moonHeight,maxMoonY),center.z);
+        int duration=Math.max(1,Math.min(560,cfg.illusionist_celestial_pull_duration_ticks)); // moon blocks must not outlive the falling-block despawn timer
+        PullState state=new PullState(id,world,center,moon,moonRadius,moon.y-center.y,
+                Math.max(Math.max(cfg.illusionist_celestial_crater_radius,cfg.illusionist_celestial_pull_radius),moonRadius*1.8),cfg.illusionist_celestial_weightless_radius,duration);
+        // Hollow shell of blocks. It assembles in a rising spiral over ~1.2 seconds (small batches each tick) instead of
+        // popping in, and is thinned evenly if it would exceed the configured entity budget.
+        List<BlockPos> shell=new ArrayList<>();
+        int reach=(int)Math.ceil(moonRadius);
+        for(int dx=-reach;dx<=reach;dx++)for(int dy=-reach;dy<=reach;dy++)for(int dz=-reach;dz<=reach;dz++){
+            double d=Math.sqrt(dx*dx+dy*dy+dz*dz);
+            if(d>moonRadius||d<moonRadius-1.15||((dx+dy+dz)&1)!=0)continue;
+            shell.add(BlockPos.ofFloored(moon.x+dx,moon.y+dy,moon.z+dz));
         }
-        ACTIVE_PULLS.put(id,new PullState(id,world,center,falling,Math.max(1,YPConfig.getInstance().illusionist_celestial_pull_duration_ticks)));
-        pullCooldowns.put(id,Math.max(0,YPConfig.getInstance().illusionist_celestial_pull_cooldown_ticks));
-        world.spawnParticles(ParticleTypes.PORTAL,center.x,center.y+25,center.z,90,2,2,2,.25);
+        final double centerY=moon.y,radiusForSort=moonRadius;
+        shell.sort(Comparator.comparingDouble(pos->{
+            double angle=Math.atan2(pos.getZ()+.5-moon.z,pos.getX()+.5-moon.x)/(2.0*Math.PI)+.5;
+            double height=(pos.getY()+.5-centerY+radiusForSort)/(2.0*radiusForSort);
+            return height*3.0+angle; // three turns of spiral from the bottom to the top
+        }));
+        int budget=Math.max(100,cfg.illusionist_celestial_moon_max_blocks);
+        if(shell.size()>budget){
+            List<BlockPos> thinned=new ArrayList<>(budget);
+            double step=shell.size()/(double)budget;
+            for(double i=0;i<shell.size()&&thinned.size()<budget;i+=step)thinned.add(shell.get((int)i));
+            shell=thinned;
+        }
+        state.totalPlanned=shell.size();
+        state.assembleBatch=Math.max(8,(int)Math.ceil(shell.size()/24.0));
+        state.removeBatch=Math.max(40,(int)Math.ceil(shell.size()/8.0));
+        state.pending.addAll(shell);
+        ACTIVE_PULLS.put(id,state);
+        applyWeightless(world.getServer(),state,player);
+        pullCooldowns.put(id,Math.max(0,cfg.illusionist_celestial_pull_cooldown_ticks));
+        world.spawnParticles(ParticleTypes.PORTAL,moon.x,moon.y,moon.z,90,2,2,2,.25);
+        EpicVfx.column(world,ParticleTypes.REVERSE_PORTAL,center.x,center.y,center.z,Math.min(40.0,moon.y-center.y),30);
+        EpicVfx.shockwave(world,center.x,center.y,center.z,8.0);
         world.playSound(null,BlockPos.ofFloored(center),SoundEvents.BLOCK_END_PORTAL_SPAWN,SoundCategory.PLAYERS,2,.5f);
         player.sendMessage(Text.literal("Celestial Pull: gravity well forming."),true);
     }
@@ -168,13 +216,13 @@ public final class IllusionistPower extends Power {
             }else{
                 Vec3d destination=player.getEyePos().add(PowerCombatUtil.safeLook(player).multiply(gripDistances.getOrDefault(id,5.0)));
                 Vec3d velocity=destination.subtract(held.getEntityPos()).multiply(.35);
-                held.setVelocity(velocity);held.velocityDirty=true;
+                held.setVelocity(velocity);((com.yppowers.mixin.EntityVelocityAccessor) (Object) held).invokeYppowersScheduleVelocityUpdate();
                 if(player.age%2==0 && player.getEntityWorld() instanceof ServerWorld gripWorld)
                     gripWorld.spawnParticles(ParticleTypes.ENCHANT,held.getX(),held.getY()+.5,held.getZ(),2,.12,.12,.12,.01);
             }
         }
         int passive=gripPassiveClock.getOrDefault(id,0)+1;
-        if(passive>=10){passive=0;pullNearbyItems(player);}
+        if(passive>=2){passive=0;pullNearbyItems(player);}
         gripPassiveClock.put(id,passive);
     }
 
@@ -185,7 +233,7 @@ public final class IllusionistPower extends Power {
             if(e.squaredDistanceTo(player)>r*r)continue;
             Vec3d delta=player.getEntityPos().add(0,.5,0).subtract(e.getEntityPos());
             if(delta.lengthSquared()<.01)continue;
-            e.addVelocity(delta.normalize().multiply(.22));e.velocityDirty=true;
+            e.addVelocity(delta.normalize().multiply(.1));((com.yppowers.mixin.EntityVelocityAccessor) (Object) e).invokeYppowersScheduleVelocityUpdate();
         }
     }
 
@@ -208,6 +256,7 @@ public final class IllusionistPower extends Power {
                         if(entity instanceof ServerPlayerEntity targetPlayer) {
                             if(owner==null || targetPlayer==owner || AllianceManager.get(server).isAlly(owner,targetPlayer))continue;
                         }
+                        if(owner!=null&&PowerCombatUtil.isFriendlyMinion(owner,entity))continue;
                         living.damage(world,world.getDamageSources().magic(),(float)Math.max(0,YPConfig.getInstance().illusionist_spatial_erasure_damage));
                         living.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS,Math.max(1,YPConfig.getInstance().illusionist_spatial_erasure_slowness_ticks),3));
                     }
@@ -215,40 +264,188 @@ public final class IllusionistPower extends Power {
             }
             erasures.remove();
         }
+        if(!PENDING_GRAVITY_RESTORE.isEmpty()&&server.getTicks()%20==0){
+            Iterator<Map.Entry<UUID,Integer>> pending=PENDING_GRAVITY_RESTORE.entrySet().iterator();
+            while(pending.hasNext()){
+                Map.Entry<UUID,Integer> entry=pending.next();
+                if(restoreGravity(server,entry.getKey(),true)!=null||entry.getValue()-20<=0)pending.remove();
+                else entry.setValue(entry.getValue()-20);
+            }
+        }
         Iterator<Map.Entry<UUID,PullState>> pulls=ACTIVE_PULLS.entrySet().iterator();
         while(pulls.hasNext()){
             Map.Entry<UUID,PullState> entry=pulls.next();PullState state=entry.getValue();
             ServerPlayerEntity owner=server.getPlayerManager().getPlayer(state.owner);
-            if(owner==null||!owner.isAlive()||owner.getEntityWorld()!=state.world){
-                for(FallingBlockEntity b:state.blocks)b.discard();pulls.remove();continue;
+            if(owner==null||!owner.isAlive()||owner.getEntityWorld()!=state.world){abortPull(server,state);pulls.remove();continue;}
+            if(state.blastAge>=0){if(tickCrater(state))pulls.remove();continue;}
+            state.age++;
+            // Assemble the moon in small batches; only air is replaced, so terrain is never removed.
+            for(int i=0;i<state.assembleBatch&&!state.pending.isEmpty();i++){
+                FallingBlockEntity moonBlock=spawnMoonBlock(state.world,state.pending.poll(),state.blocks.size());
+                if(moonBlock!=null)state.blocks.add(moonBlock);
             }
             if(--state.ticks>0){
-                double r=Math.max(1,YPConfig.getInstance().illusionist_celestial_pull_radius);
+                if(state.age%10==1)applyWeightless(server,state,owner);
+                double r=state.craterRadius;
                 Box area=new Box(state.center.x-r,state.center.y-r,state.center.z-r,state.center.x+r,state.center.y+r,state.center.z+r);
-                for(Entity e:state.world.getOtherEntities(owner,area,x->!(x instanceof ServerPlayerEntity)&&x instanceof LivingEntity&&x.isAlive())){
+                Vec3d hover=new Vec3d(state.center.x,state.center.y+Math.min(10.0,state.moonHeight*.45),state.center.z);
+                for(Entity e:state.world.getOtherEntities(owner,area,x->!(x instanceof ServerPlayerEntity)&&x instanceof LivingEntity&&x.isAlive()&&!PowerCombatUtil.isFriendlyMinion(owner,x))){
                     if(e.squaredDistanceTo(state.center)>r*r)continue;
-                    state.captured.add(e.getUuid());Vec3d delta=state.center.add(0,1,0).subtract(e.getEntityPos());
-                    if(delta.lengthSquared()>.01){Vec3d v=delta.normalize().multiply(.18).add(0,.035,0);e.addVelocity(v);e.velocityDirty=true;}
+                    state.captured.add(e.getUuid());
+                    // Weightless prey drift up into the well and hang beneath the moon.
+                    Vec3d delta=hover.subtract(e.getEntityPos());
+                    Vec3d v=delta.lengthSquared()<2.25?Vec3d.ZERO:delta.multiply(.1);
+                    if(v.lengthSquared()>1.44)v=v.normalize().multiply(1.2);
+                    e.setVelocity(v);((com.yppowers.mixin.EntityVelocityAccessor) (Object) e).invokeYppowersScheduleVelocityUpdate();
                 }
-                if(state.ticks%5==0)state.world.spawnParticles(ParticleTypes.SMOKE,state.center.x,state.center.y,state.center.z,18,2,2,2,.01);
-            }else{
-                for(FallingBlockEntity b:state.blocks)b.discard();
-                for(Entity e:state.world.iterateEntities()) if(state.captured.contains(e.getUuid())&&e instanceof LivingEntity living&&living.isAlive())
-                    living.damage(state.world,state.world.getDamageSources().magic(),(float)Math.max(0,YPConfig.getInstance().illusionist_celestial_pull_damage));
-                state.world.spawnParticles(ParticleTypes.EXPLOSION_EMITTER,state.center.x,state.center.y,state.center.z,1,0,0,0,0);
-                state.world.spawnParticles(ParticleTypes.PORTAL,state.center.x,state.center.y,state.center.z,160,4,3,4,.35);
-                EpicVfx.impact(state.world, state.center.x, state.center.y, state.center.z, 1.6);
-                state.world.playSound(null, BlockPos.ofFloored(state.center), SoundEvents.ENTITY_GENERIC_EXPLODE.value(), SoundCategory.BLOCKS, 3, .6f);
-                pulls.remove();
+                if(state.age%4==0){
+                    state.world.spawnParticles(ParticleTypes.LARGE_SMOKE,state.moon.x,state.moon.y,state.moon.z,10,state.moonRadius*.6,state.moonRadius*.6,state.moonRadius*.6,.01);
+                    state.world.spawnParticles(ParticleTypes.END_ROD,state.moon.x,state.moon.y,state.moon.z,4,state.moonRadius*.7,state.moonRadius*.7,state.moonRadius*.7,.02);
+                }
+                if(state.age%12==0)EpicVfx.column(state.world,ParticleTypes.REVERSE_PORTAL,state.center.x,state.center.y,state.center.z,Math.min(30.0,state.moonHeight),12);
+                tickMoonVfx(state);
+            }else beginCrater(server,state);
+        }
+    }
+
+    /** Cinematic staging while the moon hangs: rotating corona, ground shadow, gravity tendrils, and a comet-like final approach. */
+    private static void tickMoonVfx(PullState state){
+        ServerWorld world=state.world;Vec3d moon=state.moon,c=state.center;
+        double r=state.moonRadius;
+        double progress=Math.min(1.0,state.age/(double)Math.max(1,state.age+state.ticks));
+        // Corona: a ring of light that rotates around the moon and brightens as the strike approaches.
+        double spin=state.age*.12;int corona=(int)(6+10*progress);
+        for(int k=0;k<corona;k++){
+            double theta=spin+2.0*Math.PI*k/corona,phi=Math.PI*(.15+.7*((k*.6180339887)%1.0));
+            world.spawnParticles(k%3==0?ParticleTypes.SOUL_FIRE_FLAME:ParticleTypes.END_ROD,
+                    moon.x+Math.cos(theta)*Math.sin(phi)*r*1.05,moon.y+Math.cos(phi)*r*1.05,moon.z+Math.sin(theta)*Math.sin(phi)*r*1.05,0,
+                    -Math.sin(theta),0.0,Math.cos(theta),.04);
+        }
+        if(state.age%6==0){
+            // Ground shadow that tightens toward the impact point.
+            double shadow=r*(1.5-.6*progress);
+            EpicVfx.ring(world,ParticleTypes.LARGE_SMOKE,c.x,c.y+.15,c.z,shadow,.0,24,0.0);
+            // Gravity tendrils spiralling up from the ground to the underside of the moon.
+            EpicVfx.helix(world,ParticleTypes.REVERSE_PORTAL,c.x,c.y,c.z,Math.max(4.0,moon.y-r-c.y),Math.min(6.0,r*.6),2.0,22,.06);
+        }
+        // Final approach: the moon "ignites" and a ring of fire sweeps down to the ground, with a rising charge sound.
+        if(state.ticks==26)world.playSound(null,BlockPos.ofFloored(c),SoundEvents.ENTITY_WARDEN_SONIC_CHARGE,SoundCategory.PLAYERS,5.0f,.6f);
+        if(state.ticks<=14){
+            double f=1.0-state.ticks/14.0;
+            double y=(moon.y-r)+((c.y+1.0)-(moon.y-r))*f;
+            EpicVfx.ring(world,ParticleTypes.FLAME,moon.x,y,moon.z,r*.55,.02,20,-.04);
+            world.spawnParticles(ParticleTypes.LAVA,moon.x,moon.y-r,moon.z,3,r*.5,.3,r*.5,0);
+            world.spawnParticles(ParticleTypes.LARGE_SMOKE,moon.x,moon.y-r,moon.z,6,r*.5,.3,r*.5,.02);
+        }
+    }
+
+    private static FallingBlockEntity spawnMoonBlock(ServerWorld world,BlockPos pos,int index){
+        if(!world.getBlockState(pos).isAir())return null;
+        BlockState block=index%7==0?Blocks.CRYING_OBSIDIAN.getDefaultState():index%5==0?Blocks.MAGMA_BLOCK.getDefaultState():index%3==0?Blocks.OBSIDIAN.getDefaultState():Blocks.BLACKSTONE.getDefaultState();
+        FallingBlockEntity fallingBlock=FallingBlockEntity.spawnFromBlock(world,pos,block);
+        if(fallingBlock==null)return null;
+        fallingBlock.setNoGravity(true);fallingBlock.setVelocity(Vec3d.ZERO);fallingBlock.setDestroyedOnLanding();
+        return fallingBlock;
+    }
+
+    /** Makes every non-allied living entity and item in the area weightless; gravity is restored when the skill ends. */
+    private static void applyWeightless(MinecraftServer server,PullState state,ServerPlayerEntity owner){
+        double wr=state.weightlessRadius;AllianceManager allies=AllianceManager.get(server);
+        Box box=new Box(state.center.x-wr,state.center.y-wr,state.center.z-wr,state.center.x+wr,state.center.y+wr,state.center.z+wr);
+        for(Entity e:state.world.getOtherEntities(owner,box,x->x.isAlive()&&!x.hasNoGravity()&&(x instanceof LivingEntity||x instanceof ItemEntity))){
+            if(e.squaredDistanceTo(state.center)>wr*wr)continue;
+            if(e instanceof ServerPlayerEntity other&&allies.isAlly(owner,other))continue;
+            if(PowerCombatUtil.isFriendlyMinion(owner,e))continue;
+            e.setNoGravity(true);state.weightless.add(e.getUuid());
+        }
+    }
+
+    private static Entity restoreGravity(MinecraftServer server,UUID id,boolean slowFall){
+        for(ServerWorld world:server.getWorlds()){
+            Entity e=world.getEntity(id);
+            if(e==null)continue;
+            e.setNoGravity(false);
+            if(slowFall&&e instanceof LivingEntity living&&living.isAlive())
+                living.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOW_FALLING,80,0,false,false));
+            return e;
+        }
+        return null;
+    }
+
+    private static void beginCrater(MinecraftServer server,PullState state){
+        state.blastAge=0;
+        YPConfig cfg=YPConfig.getInstance();
+        float damage=(float)Math.max(0,Math.max(cfg.illusionist_celestial_pull_damage,cfg.illusionist_celestial_crater_damage));
+        for(UUID capturedId:state.captured){
+            Entity captured=state.world.getEntity(capturedId);
+            if(captured instanceof LivingEntity living&&living.isAlive())living.damage(state.world,state.world.getDamageSources().magic(),damage);
+        }
+        // Gravity returns: captured prey are slammed down into the crater, everything else drifts down gently.
+        for(UUID id:state.weightless){
+            boolean wasCaptured=state.captured.contains(id);
+            Entity e=restoreGravity(server,id,!wasCaptured);
+            if(e==null){PENDING_GRAVITY_RESTORE.put(id,72000);continue;}
+            if(wasCaptured&&e.isAlive()){e.setVelocity(0,-1.8,0);((com.yppowers.mixin.EntityVelocityAccessor) (Object) e).invokeYppowersScheduleVelocityUpdate();}
+        }
+        ServerWorld world=state.world;Vec3d c=state.center;
+        world.playSound(null,BlockPos.ofFloored(c),SoundEvents.ENTITY_GENERIC_EXPLODE.value(),SoundCategory.BLOCKS,5,.5f);
+        world.playSound(null,BlockPos.ofFloored(c),SoundEvents.ENTITY_LIGHTNING_BOLT_THUNDER,SoundCategory.WEATHER,6,.6f);
+        world.playSound(null,BlockPos.ofFloored(c),SoundEvents.ENTITY_WARDEN_SONIC_BOOM,SoundCategory.PLAYERS,4,.7f);
+        world.spawnParticles(ParticleTypes.EXPLOSION_EMITTER,c.x,c.y+1,c.z,1,0,0,0,0);
+        world.spawnParticles(ParticleTypes.SONIC_BOOM,c.x,c.y+1,c.z,1,0,0,0,0);
+        EpicVfx.flash(world,c.x,c.y+1,c.z);
+        EpicVfx.sphereBurst(world,ParticleTypes.PORTAL,c.x,c.y+1,c.z,60,.7);
+        EpicVfx.sphereBurst(world,ParticleTypes.END_ROD,c.x,c.y+1,c.z,40,.5);
+        EpicVfx.column(world,ParticleTypes.END_ROD,c.x,c.y,c.z,18.0,18);
+        EpicVfx.shockwave(world,c.x,c.y,c.z,state.craterRadius);
+    }
+
+    /** Plays out the crater blast over several ticks (blocks are removed in batches); returns true when finished. */
+    private static boolean tickCrater(PullState state){
+        int age=state.blastAge++;
+        int removed=0;Iterator<FallingBlockEntity> blocks=state.blocks.iterator();
+        while(blocks.hasNext()&&removed<state.removeBatch){
+            FallingBlockEntity shard=blocks.next();
+            // The moon disintegrates into falling debris instead of vanishing.
+            state.world.spawnParticles(new BlockStateParticleEffect(ParticleTypes.BLOCK,shard.getBlockState()),shard.getX(),shard.getY(),shard.getZ(),3,.35,.35,.35,.12);
+            shard.discard();blocks.remove();removed++;
+        }
+        ServerWorld world=state.world;Vec3d c=state.center;
+        if(age%2==0&&age<=CRATER_TICKS){
+            double progress=Math.min(1.0,(age+1)/(double)CRATER_TICKS);
+            double r=state.craterRadius*(1.0-Math.pow(1.0-progress,2.0));
+            int points=(int)Math.max(16,Math.min(40,16+r*2));
+            BlockState ground=world.getBlockState(BlockPos.ofFloored(c.x,c.y-1,c.z));
+            if(ground.isAir())ground=Blocks.DEEPSLATE.getDefaultState();
+            for(int i=0;i<points;i++){
+                double a=2.0*Math.PI*i/points;
+                world.spawnParticles(ParticleTypes.CLOUD,c.x+Math.cos(a)*r,c.y+.2,c.z+Math.sin(a)*r,1,.1,.05,.1,.01);
+                if(i%2==0)world.spawnParticles(new BlockStateParticleEffect(ParticleTypes.BLOCK,ground),c.x+Math.cos(a)*r*.9,c.y+.3,c.z+Math.sin(a)*r*.9,2,.3,.3,.3,.15);
+            }
+            if(age==2||age==6)for(int k=0;k<2;k++){
+                double a=ThreadLocalRandom.current().nextDouble(0,Math.PI*2),d=ThreadLocalRandom.current().nextDouble(.2,.8)*state.craterRadius;
+                net.minecraft.entity.LightningEntity bolt=EntityType.LIGHTNING_BOLT.create(world,SpawnReason.TRIGGERED);
+                if(bolt!=null){bolt.setCosmetic(true);bolt.refreshPositionAfterTeleport(c.x+Math.cos(a)*d,c.y,c.z+Math.sin(a)*d);world.spawnEntity(bolt);}
             }
         }
+        return age>=CRATER_TICKS&&state.blocks.isEmpty();
+    }
+
+    private static void abortPull(MinecraftServer server,PullState state){
+        for(FallingBlockEntity b:state.blocks)b.discard();
+        state.blocks.clear();
+        for(UUID id:state.weightless)if(restoreGravity(server,id,true)==null)PENDING_GRAVITY_RESTORE.put(id,72000);
     }
 
     public static void shutdown(MinecraftServer server){
         for(Erasure erasure:ACTIVE_ERASURES.values())for(SavedBlock b:erasure.blocks){
             if(b.world().isChunkLoaded(ChunkPos.toLong(b.pos()))&&b.world().getBlockState(b.pos()).isAir())b.world().setBlockState(b.pos(),b.state(),3);
         }
-        ACTIVE_ERASURES.clear();for(PullState state:ACTIVE_PULLS.values())for(FallingBlockEntity b:state.blocks)b.discard();ACTIVE_PULLS.clear();
+        ACTIVE_ERASURES.clear();
+        for(PullState state:ACTIVE_PULLS.values())abortPull(server,state);
+        ACTIVE_PULLS.clear();
+        // Last chance before the world saves: restore anything still pending so nothing stays weightless.
+        PENDING_GRAVITY_RESTORE.keySet().removeIf(id->restoreGravity(server,id,false)!=null);
     }
     private static void decrement(Map<UUID,Integer> map,UUID id){int v=map.getOrDefault(id,0);if(v>0)map.put(id,v-1);}
     public boolean tryThrowGripOnAttack(ServerPlayerEntity player) {

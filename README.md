@@ -115,7 +115,7 @@ The player can then use the power's abilities with the keybinds below.
 ### Thor
 - **Right-click (hold) — Riptide:** Hold and release right-click with the mace to launch yourself like a Riptide III trident, anywhere — no water or rain required.
 - **Permanent Speed II** while assigned.
-- Comes with a mace (Density 5, Wind Burst 1, Mending, Unbreaking 3) that you keep when you die.
+- Comes with an Unbreakable mace (Density 5, Wind Burst 1, Fire Aspect 2, Curse of Vanishing, Mending, Unbreaking 3) that you keep when you die.
 
 ---
 

@@ -66,6 +66,45 @@ public class YPPowersMod implements ModInitializer {
             return net.minecraft.util.ActionResult.PASS;
         });
 
+        // Shadow Archer: a click that lands on the player's own disguise is re-aimed at whatever is really there.
+        net.fabricmc.fabric.api.event.player.AttackEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
+            if (world.isClient() || !(player instanceof ServerPlayerEntity serverPlayer) || world.getServer() == null) return net.minecraft.util.ActionResult.PASS;
+            PowerManager manager = PowerManager.get(world.getServer());
+            if (manager.getPowerType(serverPlayer.getUuid()) == PowerType.SHADOW_ARCHER
+                    && manager.getPowerInstance(PowerType.SHADOW_ARCHER) instanceof ShadowArcherPower archer
+                    && archer.isOwnDisguise(serverPlayer, entity)) {
+                archer.redirectDisguiseClick(serverPlayer, hand, true);
+                return net.minecraft.util.ActionResult.FAIL;
+            }
+            return net.minecraft.util.ActionResult.PASS;
+        });
+        net.fabricmc.fabric.api.event.player.UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
+            if (world.isClient() || !(player instanceof ServerPlayerEntity serverPlayer) || world.getServer() == null) return net.minecraft.util.ActionResult.PASS;
+            PowerManager manager = PowerManager.get(world.getServer());
+            if (manager.getPowerType(serverPlayer.getUuid()) == PowerType.SHADOW_ARCHER
+                    && manager.getPowerInstance(PowerType.SHADOW_ARCHER) instanceof ShadowArcherPower archer
+                    && archer.isOwnDisguise(serverPlayer, entity)) {
+                archer.redirectDisguiseClick(serverPlayer, hand, false);
+                return net.minecraft.util.ActionResult.SUCCESS;
+            }
+            return net.minecraft.util.ActionResult.PASS;
+        });
+
+        // The transformed Giant Kitsune can place blocks at long range (right-click in the air with a block in hand).
+        net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
+            if (hand != net.minecraft.util.Hand.MAIN_HAND || world.isClient()
+                    || !(player instanceof ServerPlayerEntity serverPlayer) || world.getServer() == null) {
+                return net.minecraft.util.ActionResult.PASS;
+            }
+            if (!(serverPlayer.getMainHandStack().getItem() instanceof net.minecraft.item.BlockItem)) return net.minecraft.util.ActionResult.PASS;
+            PowerManager manager = PowerManager.get(world.getServer());
+            if (manager.getPowerType(serverPlayer.getUuid()) != PowerType.KITSUNE) return net.minecraft.util.ActionResult.PASS;
+            if (manager.getPowerInstance(PowerType.KITSUNE) instanceof KitsunePower kitsune && kitsune.tryFoxPlaceBlock(serverPlayer)) {
+                return net.minecraft.util.ActionResult.SUCCESS;
+            }
+            return net.minecraft.util.ActionResult.PASS;
+        });
+
         // Spatial Erasure is deliberately armed first; ordinary block interactions are untouched unless
         // the assigned Illusionist explicitly armed the ability.
         UseBlockCallback.EVENT.register((player, world, hand, hit) -> {

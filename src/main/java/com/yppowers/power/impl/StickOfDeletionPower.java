@@ -43,6 +43,9 @@ public class StickOfDeletionPower extends Power {
                 
                 target.getEntityWorld().playSound(null, target.getBlockPos(), SoundEvents.ENTITY_IRON_GOLEM_ATTACK, SoundCategory.PLAYERS, 1.0f, 1.0f);
                 ((ServerWorld) target.getEntityWorld()).spawnParticles(ParticleTypes.EXPLOSION, target.getX(), target.getY() + 1, target.getZ(), 5, 0.5, 0.5, 0.5, 0);
+                ServerWorld vfxWorld = (ServerWorld) target.getEntityWorld();
+                EpicVfx.impact(vfxWorld, target.getX(), target.getY(), target.getZ(), 1.4);
+                EpicVfx.beam(vfxWorld, ParticleTypes.END_ROD, attacker.getEntityPos().add(0, 1, 0), target.getEntityPos().add(0, 1, 0), 0.4);
 
                 knockedEntities.computeIfAbsent(aId, k -> new HashMap<>()).put(target.getUuid(), 0);
                 int cooldownTicks = Math.max(0, YPConfig.getInstance().stick_of_deletion_cooldown_ticks);

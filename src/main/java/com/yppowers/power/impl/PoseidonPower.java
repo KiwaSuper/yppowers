@@ -340,6 +340,11 @@ public class PoseidonPower extends Power {
         }
 
         // A short-lived sea-spray plume rises at the water source as the crest passes it.
+        if (state.age <= 1) {
+            EpicVfx.shockwave(state.world, state.center.x, state.center.y, state.center.z, 8.0);
+            EpicVfx.ring(state.world, ParticleTypes.SPLASH, state.center.x, state.center.y + 0.3, state.center.z, 0.5, 0.25, 32, 0.05);
+            EpicVfx.column(state.world, ParticleTypes.SPLASH, state.center.x, state.center.y, state.center.z, 7.0, 16);
+        }
         if (state.age <= 6) {
             // Three rising jets evoke Poseidon's trident before the crest breaks outward.
             for (int y = 1; y <= 5; y++) {

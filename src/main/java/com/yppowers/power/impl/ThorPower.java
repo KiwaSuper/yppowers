@@ -14,11 +14,13 @@ import net.minecraft.item.Items;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.Unit;
 import net.minecraft.util.math.BlockPos;
 
 /**
- * Thor: a soulbound enchanted mace (Density 5, Wind Burst 1, Mending, Unbreaking 3),
- * hold-and-release right-click Riptide III anywhere, and permanent Speed II.
+ * Thor: a soulbound Unbreakable enchanted mace (Density 5, Wind Burst 1, Fire Aspect 2,
+ * Curse of Vanishing, Mending, Unbreaking 3), hold-and-release right-click Riptide III anywhere,
+ * and permanent Speed II.
  */
 public class ThorPower extends Power {
     public static final String MACE_FLAG = "YPThorMace";
@@ -74,18 +76,21 @@ public class ThorPower extends Power {
         return mace;
     }
 
-    /** Applies the fixed enchantment spec (Density 5, Wind Burst 1, Mending 1, Unbreaking 3). */
+    /** Applies Unbreakable and the fixed enchantment spec (Density 5, Wind Burst 1, Fire Aspect 2, Curse of Vanishing, Mending, Unbreaking 3). */
     private static void applyThorEnchantments(ServerPlayerEntity player, ItemStack mace) {
         for (int i = 1; i <= 4; i++) {
             YPItemData.setFlag(mace, "YPThorMode" + i, false);
         }
-        mace.remove(DataComponentTypes.UNBREAKABLE);
+        mace.set(DataComponentTypes.UNBREAKABLE, Unit.INSTANCE);
+        mace.setDamage(0);
 
         var enchRegistry = player.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT);
         mace.set(DataComponentTypes.ENCHANTMENTS, ItemEnchantmentsComponent.DEFAULT);
         EnchantmentHelper.apply(mace, builder -> {
             builder.add(enchRegistry.getOrThrow(Enchantments.DENSITY), 5);
             builder.add(enchRegistry.getOrThrow(Enchantments.WIND_BURST), 1);
+            builder.add(enchRegistry.getOrThrow(Enchantments.FIRE_ASPECT), 2);
+            builder.add(enchRegistry.getOrThrow(Enchantments.VANISHING_CURSE), 1);
             builder.add(enchRegistry.getOrThrow(Enchantments.MENDING), 1);
             builder.add(enchRegistry.getOrThrow(Enchantments.UNBREAKING), 3);
         });

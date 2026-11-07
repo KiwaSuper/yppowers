@@ -116,6 +116,8 @@ public class FireGodPower extends Power {
         list.add(new OwnedSummon(mob, id, blaze, Math.max(20, life)));
         cooldownMap.put(id, Math.max(0, blaze ? cfg.fire_god_blaze_cooldown_ticks : cfg.fire_god_wither_skeleton_cooldown_ticks));
         world.spawnParticles(blaze ? ParticleTypes.FLAME : ParticleTypes.SOUL_FIRE_FLAME, mob.getX(), mob.getBodyY(0.5), mob.getZ(), 20, .5, .5, .5, .04);
+        EpicVfx.shockwave(world, mob.getX(), mob.getY(), mob.getZ(), 3.5);
+        EpicVfx.helix(world, blaze ? ParticleTypes.FLAME : ParticleTypes.SOUL_FIRE_FLAME, mob.getX(), mob.getY(), mob.getZ(), 2.4, 0.9, 2.0, 22, 0.08);
         world.playSound(null, player.getBlockPos(), blaze ? SoundEvents.ENTITY_BLAZE_AMBIENT : SoundEvents.ENTITY_WITHER_SKELETON_AMBIENT,
                 SoundCategory.PLAYERS, .8f, blaze ? 1.2f : .8f);
     }
@@ -204,6 +206,9 @@ public class FireGodPower extends Power {
             
             world.playSound(null, player.getBlockPos(), SoundEvents.ENTITY_GHAST_SHOOT, SoundCategory.PLAYERS, 1.0f, 1.0f);
             world.spawnParticles(ParticleTypes.FLAME, player.getX(), player.getEyeY(), player.getZ(), 20, 0.5, 0.5, 0.5, 0.1);
+            EpicVfx.sphereBurst(world, ParticleTypes.FLAME, player.getX() + look.x, player.getEyeY() + look.y, player.getZ() + look.z, 24, 0.3);
+            EpicVfx.beam(world, ParticleTypes.FLAME, new Vec3d(player.getX(), player.getEyeY(), player.getZ()),
+                    new Vec3d(player.getX(), player.getEyeY(), player.getZ()).add(look.multiply(6.0)), 0.5);
             
             ghastCooldowns.put(pId, Math.max(0, YPConfig.getInstance().fire_god_cannon_cooldown_ticks));
         } else {

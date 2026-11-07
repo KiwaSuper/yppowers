@@ -75,6 +75,8 @@ public class TeleportGambitPower extends Power {
         if (configuredCooldown > 0) gatewayCooldowns.put(uuid, configuredCooldown);
         world.playSound(null, pos, SoundEvents.BLOCK_END_PORTAL_SPAWN, SoundCategory.PLAYERS, 1.0f, 1.0f);
         world.spawnParticles(ParticleTypes.REVERSE_PORTAL, pos.getX() + 0.5, pos.getY() + 0.1, pos.getZ() + 0.5, 30, 0.35, 0.05, 0.35, 0.1);
+        EpicVfx.activation(world, pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 1.2);
+        EpicVfx.column(world, ParticleTypes.REVERSE_PORTAL, pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 4.0, 12);
     }
 
     @Override public void tick(ServerPlayerEntity player) {
@@ -132,11 +134,14 @@ public class TeleportGambitPower extends Power {
             }
             if (dest != null) {
                 world.spawnParticles(ParticleTypes.PORTAL, entrant.getX(), entrant.getY(), entrant.getZ(), 24, 0.5, 0.5, 0.5, 0.1);
+                EpicVfx.implosion(world, ParticleTypes.PORTAL, entrant.getX(), entrant.getY() + 0.2, entrant.getZ(), 1.8, 18, 0.25);
                 transferLockoutUntil.put(entrant.getUuid(), world.getTime() + TRANSFER_LOCKOUT_TICKS);
                 entrant.teleport(world, dest.getX() + 0.5, dest.getY(), dest.getZ() + 0.5, Set.of(), entrant.getYaw(), entrant.getPitch(), false);
                 entrant.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOW_FALLING, 60, 0));
                 entrant.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 40, 1));
                 world.spawnParticles(ParticleTypes.PORTAL, dest.getX() + 0.5, dest.getY() + 1.0, dest.getZ() + 0.5, 24, 0.5, 0.8, 0.5, 0.1);
+                EpicVfx.shockwave(world, dest.getX() + 0.5, dest.getY(), dest.getZ() + 0.5, 4.0);
+                EpicVfx.column(world, ParticleTypes.REVERSE_PORTAL, dest.getX() + 0.5, dest.getY(), dest.getZ() + 0.5, 4.0, 12);
                 world.playSound(null, dest, SoundEvents.ENTITY_ENDERMAN_TELEPORT, SoundCategory.PLAYERS, 1.0f, 1.0f);
                 removePad(player, true);
                 return;

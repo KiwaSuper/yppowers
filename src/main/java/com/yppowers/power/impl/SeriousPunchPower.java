@@ -182,7 +182,7 @@ public class SeriousPunchPower extends Power {
         }
         Vec3d look = player.getRotationVec(1.0F).normalize();
         player.setVelocity(-look.x * 0.45, 1.15, -look.z * 0.45);
-        player.velocityDirty = true;
+        ((com.yppowers.mixin.EntityVelocityAccessor) (Object) player).invokeYppowersScheduleVelocityUpdate();
         hellDives.put(id, new HellDiveState());
         hellDiveCooldowns.put(id, Math.max(0, YPConfig.getInstance().serious_punch_helldive_cooldown_ticks));
         player.sendMessage(Text.literal("HELLDIVE — ascent!" ).formatted(Formatting.RED, Formatting.BOLD), true);
@@ -224,7 +224,7 @@ public class SeriousPunchPower extends Power {
         if (state.descending) {
             Vec3d v = player.getVelocity();
             player.setVelocity(v.x * 0.65, -2.2, v.z * 0.65);
-            player.velocityDirty = true;
+            ((com.yppowers.mixin.EntityVelocityAccessor) (Object) player).invokeYppowersScheduleVelocityUpdate();
             if (player.isOnGround() || state.ticks <= 0) {
                 performHellDiveImpact(player);
                 hellDives.remove(id);
@@ -245,10 +245,11 @@ public class SeriousPunchPower extends Power {
         Box area = player.getBoundingBox().expand(radius, 2.0, radius);
         for (Entity entity : world.getOtherEntities(player, area, e -> e.isAlive())) {
             if (entity instanceof ServerPlayerEntity p && alliances.isAlly(player, p)) continue;
+            if (PowerCombatUtil.isFriendlyMinion(player, entity)) continue;
             if (entity.squaredDistanceTo(player) > radius * radius) continue;
             entity.damage(world, world.getDamageSources().playerAttack(player), (float)Math.max(0, cfg.serious_punch_helldive_damage));
             Vec3d push = entity.getEntityPos().subtract(player.getEntityPos()).normalize().multiply(1.1).add(0, .65, 0);
-            entity.addVelocity(push); entity.velocityDirty = true;
+            entity.addVelocity(push); ((com.yppowers.mixin.EntityVelocityAccessor) (Object) entity).invokeYppowersScheduleVelocityUpdate();
         }
         int craterRadius = Math.max(0, cfg.serious_punch_helldive_crater_radius);
         int depth = Math.max(0, cfg.serious_punch_helldive_crater_depth);
@@ -287,6 +288,8 @@ public class SeriousPunchPower extends Power {
         Vec3d realUp = right.crossProduct(direction).normalize();
 
         // breakBlock(false) deliberately suppresses all block drops, as before.
+        EpicVfx.impact(world, start.x, start.y, start.z, 1.4);
+        EpicVfx.beam(world, ParticleTypes.END_ROD, start, start.add(direction.multiply(range)), 0.5);
         for (int i = 0; i < range; i++) {
             Vec3d center = start.add(direction.multiply(i));
             if (i % 2 == 0) {

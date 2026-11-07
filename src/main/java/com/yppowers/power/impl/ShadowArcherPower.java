@@ -33,6 +33,13 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
+import net.minecraft.world.RaycastContext;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.Hand;
+import net.minecraft.entity.attribute.EntityAttributes;
+import net.minecraft.entity.attribute.EntityAttributeModifier;
+import net.minecraft.entity.attribute.EntityAttributeInstance;
+import net.minecraft.entity.attribute.EntityAttribute;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.collection.WeightedPool;
@@ -51,6 +58,10 @@ public class ShadowArcherPower extends Power {
     private final Set<UUID> processedArrows = new HashSet<>();
     private final Map<UUID, UUID> arrowOwners = new HashMap<>();
     private final Map<UUID, Entity> morphDisguises = new HashMap<>();
+    /** Extra interaction reach granted by tall forms (temporary attribute modifiers, never saved). */
+    private final Map<UUID, Double> morphReachBonus = new HashMap<>();
+    private static final Identifier MORPH_REACH_ID = Identifier.of("yppowers", "shadow_archer_morph_reach");
+    private static final float DEFAULT_FLY_SPEED = 0.05F;
     private final Map<UUID, MorphViewState> syncedMorphViews = new HashMap<>();
     private long lastArrowCleanupTick = Long.MIN_VALUE;
     private final Map<UUID, Integer> railshotHeldTicks = new HashMap<>();
@@ -230,8 +241,10 @@ public class ShadowArcherPower extends Power {
         if (flight != null && !player.isCreative() && !player.isSpectator()) {
             player.getAbilities().allowFlying = flight.allowFlying();
             player.getAbilities().flying = flight.flying();
+            player.getAbilities().setFlySpeed(DEFAULT_FLY_SPEED);
             player.sendAbilitiesUpdate();
         }
+        morphReachBonus.remove(uuid); // the respawned player object starts without the temporary reach modifiers
         if (morphSavedNames.containsKey(uuid)) player.setCustomName(morphSavedNames.remove(uuid));
         Boolean visible = morphSavedNameVisibility.remove(uuid);
         if (visible != null) player.setCustomNameVisible(visible);
@@ -292,11 +305,13 @@ public class ShadowArcherPower extends Power {
             if (flight != null && !player.isCreative() && !player.isSpectator()) {
                 player.getAbilities().allowFlying = flight.allowFlying();
                 player.getAbilities().flying = flight.flying();
+                player.getAbilities().setFlySpeed(DEFAULT_FLY_SPEED);
                 player.sendAbilitiesUpdate();
             }
             if (morphSavedNames.containsKey(uuid)) player.setCustomName(morphSavedNames.remove(uuid));
             Boolean visible = morphSavedNameVisibility.remove(uuid);
             if (visible != null) player.setCustomNameVisible(visible);
+            clearMorphReach(player);
         } else {
             morphSavedEffects.remove(uuid);
             morphSavedFlight.remove(uuid);
@@ -339,6 +354,11 @@ public class ShadowArcherPower extends Power {
         disguise.setVelocity(Vec3d.ZERO);
         ((com.yppowers.mixin.EntityVelocityAccessor) disguise).invokeYppowersScheduleVelocityUpdate();
         if (disguise instanceof LivingEntity living) living.setHealth(living.getMaxHealth());
+        // The disguise is purely visual. A zero-volume server hitbox keeps it from blocking block placement, being
+        // picked by raycasts, or being hit by area effects; its model and dimensions (used by the camera) are unchanged.
+        Vec3d feet = player.getEntityPos();
+        disguise.setBoundingBox(new Box(feet.x, feet.y, feet.z, feet.x, feet.y, feet.z));
+        applyMorphReach(player, disguise.getHeight());
         // Use the actual spawned disguise's dimensions (not a hard-coded mob-name table),
         // then synchronize them for the owner's local first-/third-person camera.
         syncMorphView(player, true, disguise.getId(), disguise.getEyeHeight(disguise.getPose()), disguise.getHeight(), true);
@@ -445,6 +465,14 @@ public class ShadowArcherPower extends Power {
     }
 
     private boolean executeMorphAbility(ServerPlayerEntity player, ShadowArcherMorphRegistry.Ability ability) {
+        boolean used = executeMorphAbilityCore(player, ability);
+        if (used && player.getEntityWorld() instanceof ServerWorld vfxWorld) {
+            EpicVfx.activation(vfxWorld, player.getX(), player.getY(), player.getZ(), 0.8);
+        }
+        return used;
+    }
+
+    private boolean executeMorphAbilityCore(ServerPlayerEntity player, ShadowArcherMorphRegistry.Ability ability) {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         Vec3d look = player.getRotationVec(1.0F).normalize();
         double px = player.getX();
@@ -727,13 +755,111 @@ public class ShadowArcherPower extends Power {
         return false;
     }
 
+    /** Tall forms reach further (about +0.8 block per block of height above a player, up to +5) so they can still use the ground. */
+    private void applyMorphReach(ServerPlayerEntity player, double bodyHeight) {
+        double bonus = Math.max(0.0, Math.min(5.0, (bodyHeight - 1.8) * 0.8));
+        bonus = Math.round(bonus * 4.0) / 4.0;
+        Double previous = morphReachBonus.get(player.getUuid());
+        if (previous != null && Math.abs(previous - bonus) < 1.0e-6) return;
+        setReachModifiers(player, bonus);
+        morphReachBonus.put(player.getUuid(), bonus);
+    }
+
+    private void clearMorphReach(ServerPlayerEntity player) {
+        if (morphReachBonus.remove(player.getUuid()) != null) setReachModifiers(player, 0.0);
+    }
+
+    private static void setReachModifiers(ServerPlayerEntity player, double bonus) {
+        for (RegistryEntry<EntityAttribute> attribute : List.of(EntityAttributes.BLOCK_INTERACTION_RANGE, EntityAttributes.ENTITY_INTERACTION_RANGE)) {
+            EntityAttributeInstance instance = player.getAttributeInstance(attribute);
+            if (instance == null) continue;
+            instance.removeModifier(MORPH_REACH_ID);
+            if (bonus > 0.0) {
+                instance.addTemporaryModifier(new EntityAttributeModifier(MORPH_REACH_ID, bonus, EntityAttributeModifier.Operation.ADD_VALUE));
+            }
+        }
+    }
+
+    public boolean isOwnDisguise(ServerPlayerEntity player, Entity entity) {
+        Entity disguise = morphDisguises.get(player.getUuid());
+        return disguise != null && disguise == entity;
+    }
+
+    /**
+     * Safety net for clicks that still land on the player's own disguise: the click is re-aimed along the look
+     * direction at whatever is really there, so weapons, interactions and block placement keep working.
+     */
+    public void redirectDisguiseClick(ServerPlayerEntity player, Hand hand, boolean attack) {
+        if (!(player.getEntityWorld() instanceof ServerWorld world)) return;
+        Entity disguise = morphDisguises.get(player.getUuid());
+        Vec3d eye = player.getEyePos();
+        Vec3d look = player.getRotationVec(1.0F);
+        double entityReach = player.getAttributeValue(EntityAttributes.ENTITY_INTERACTION_RANGE);
+        double blockReach = player.getAttributeValue(EntityAttributes.BLOCK_INTERACTION_RANGE);
+        double reach = Math.max(entityReach, blockReach);
+        Vec3d end = eye.add(look.multiply(reach));
+        BlockHitResult blockHit = world.raycast(new RaycastContext(eye, end, RaycastContext.ShapeType.OUTLINE, RaycastContext.FluidHandling.NONE, player));
+        double blockDistance = blockHit.getType() == HitResult.Type.BLOCK ? blockHit.getPos().distanceTo(eye) : Double.MAX_VALUE;
+        Entity best = null;
+        double bestDistance = Double.MAX_VALUE;
+        Box search = player.getBoundingBox().stretch(look.multiply(reach)).expand(1.0);
+        for (Entity candidate : world.getOtherEntities(player, search, e -> e != disguise && e.isAlive() && !e.isSpectator() && e instanceof LivingEntity)) {
+            Optional<Vec3d> hit = candidate.getBoundingBox().expand(candidate.getTargetingMargin()).raycast(eye, end);
+            if (hit.isEmpty()) continue;
+            double distance = hit.get().distanceTo(eye);
+            if (distance < bestDistance && distance <= entityReach) { best = candidate; bestDistance = distance; }
+        }
+        boolean entityFirst = best != null && bestDistance <= blockDistance;
+        if (attack) {
+            if (entityFirst) player.attack(best);
+            player.swingHand(hand, true);
+        } else if (entityFirst) {
+            player.interact(best, hand);
+        } else if (blockHit.getType() == HitResult.Type.BLOCK) {
+            player.interactionManager.interactBlock(player, world, player.getStackInHand(hand), hand, blockHit);
+        }
+    }
+
+    private static boolean isTouchingWall(ServerWorld world, ServerPlayerEntity player) {
+        double x = player.getX(), z = player.getZ(), reach = 0.42;
+        for (double y : new double[] { player.getY() + 0.5, player.getY() + 1.4 }) {
+            for (double[] offset : new double[][] { { reach, 0 }, { -reach, 0 }, { 0, reach }, { 0, -reach } }) {
+                BlockPos pos = BlockPos.ofFloored(x + offset[0], y, z + offset[1]);
+                if (!world.getBlockState(pos).getCollisionShape(world, pos).isEmpty()) return true;
+            }
+        }
+        return false;
+    }
+
+    private static float flightSpeedFor(String id) {
+        if (id.startsWith("ender_dragon")) return 0.11F;
+        if (id.startsWith("phantom")) return 0.075F;
+        if (id.startsWith("wither")) return 0.065F;
+        if (id.startsWith("vex") || id.startsWith("bat") || id.startsWith("parrot")) return 0.06F;
+        if (id.startsWith("bee") || id.startsWith("allay")) return 0.055F;
+        if (id.startsWith("happy_ghast")) return 0.045F;
+        if (id.startsWith("ghast")) return 0.04F;
+        return DEFAULT_FLY_SPEED;
+    }
+
     private void tickMorphTraits(ServerPlayerEntity player, ShadowArcherMorphRegistry.Profile profile) {
         Set<ShadowArcherMorphRegistry.Trait> traits = profile.traits();
-        if (traits.contains(ShadowArcherMorphRegistry.Trait.FLIGHT) && !player.isCreative() && !player.isSpectator()) {
-            if (!player.getAbilities().allowFlying) {
-                player.getAbilities().allowFlying = true;
-                player.sendAbilitiesUpdate();
+        if (!player.isCreative() && !player.isSpectator()) {
+            boolean flier = traits.contains(ShadowArcherMorphRegistry.Trait.FLIGHT);
+            FlightSnapshot baseline = morphSavedFlight.get(player.getUuid());
+            boolean changed = false;
+            if (flier) {
+                if (!player.getAbilities().allowFlying) { player.getAbilities().allowFlying = true; changed = true; }
+                float speed = flightSpeedFor(profile.id());
+                if (Math.abs(player.getAbilities().getFlySpeed() - speed) > 1.0e-4F) { player.getAbilities().setFlySpeed(speed); changed = true; }
+            } else {
+                // Switching from a flying form to a grounded one must take flight away again.
+                if (baseline != null && !baseline.allowFlying() && player.getAbilities().allowFlying) {
+                    player.getAbilities().allowFlying = false; player.getAbilities().flying = false; changed = true;
+                }
+                if (Math.abs(player.getAbilities().getFlySpeed() - DEFAULT_FLY_SPEED) > 1.0e-4F) { player.getAbilities().setFlySpeed(DEFAULT_FLY_SPEED); changed = true; }
             }
+            if (changed) player.sendAbilitiesUpdate();
         }
         if (traits.contains(ShadowArcherMorphRegistry.Trait.FIRE_RESISTANCE)) applyMorphEffect(player, StatusEffects.FIRE_RESISTANCE, 0, 40);
         if (traits.contains(ShadowArcherMorphRegistry.Trait.AQUATIC)) {
@@ -751,13 +877,17 @@ public class ShadowArcherPower extends Power {
         if (traits.contains(ShadowArcherMorphRegistry.Trait.LAVA_ADAPTED) && player.isInLava()) {
             applyMorphEffect(player, StatusEffects.FIRE_RESISTANCE, 0, 40);
             applyMorphEffect(player, StatusEffects.SPEED, 1, 40);
-        }
-        if (traits.contains(ShadowArcherMorphRegistry.Trait.WALL_CLIMB) && player.horizontalCollision) {
+            // Striders ride on top of lava: float to the surface unless sneaking to dive.
             Vec3d velocity = player.getVelocity();
-            if (velocity.y < 0.18) {
-                player.setVelocity(velocity.x, 0.18, velocity.z);
+            if (!player.isSneaking() && velocity.y < 0.1) {
+                player.setVelocity(velocity.x, 0.1, velocity.z);
                 ((com.yppowers.mixin.EntityVelocityAccessor) player).invokeYppowersScheduleVelocityUpdate();
             }
+        }
+        if (traits.contains(ShadowArcherMorphRegistry.Trait.WALL_CLIMB) && !player.isOnGround()
+                && player.getEntityWorld() instanceof ServerWorld climbWorld && isTouchingWall(climbWorld, player)) {
+            // Climbing is driven by the client (ladder-style physics, see ShadowArcherClientInput); clinging negates falls.
+            player.fallDistance = 0;
         }
         if (traits.contains(ShadowArcherMorphRegistry.Trait.BOUNCY) && player.isOnGround() && player.isSprinting()) {
             // A light hop on a sprint-jump makes slime forms feel springy without forcing constant jumps.
@@ -876,10 +1006,15 @@ public class ShadowArcherPower extends Power {
     }
 
     private void cleanupTrackedArrows(net.minecraft.server.MinecraftServer server) {
+        // Look every tracked arrow up by UUID instead of scanning all loaded entities. The candidate set covers every
+        // map that keeps arrow ids so a live arrow is never dropped from any of them (that would re-trigger split shots).
+        Set<UUID> candidates = new HashSet<>(arrowOwners.keySet());
+        candidates.addAll(arrowTypes.keySet());
+        candidates.addAll(processedArrows);
         Set<UUID> live = new HashSet<>();
-        for (ServerWorld world : server.getWorlds()) {
-            for (Entity entity : world.iterateEntities()) {
-                if (entity instanceof ArrowEntity arrow) live.add(arrow.getUuid());
+        for (UUID arrowId : candidates) {
+            for (ServerWorld world : server.getWorlds()) {
+                if (world.getEntity(arrowId) instanceof ArrowEntity) { live.add(arrowId); break; }
             }
         }
         arrowTypes.keySet().retainAll(live);
@@ -1023,8 +1158,8 @@ public class ShadowArcherPower extends Power {
         if (GraceManager.isActive(world.getServer())) {
             // During grace, power arrows behave as ordinary arrows. Mark them so an arrow
             // fired during grace cannot become a delayed special arrow when grace expires.
-            for (Entity entity : world.iterateEntities()) {
-                if (entity instanceof ArrowEntity arrow && arrow.getOwner() == player) {
+            for (ArrowEntity arrow : world.getEntitiesByClass(ArrowEntity.class, player.getBoundingBox().expand(160.0), a -> a.getOwner() == player)) {
+                {
                     UUID arrowId = arrow.getUuid();
                     if (!processedArrows.contains(arrowId)) GraceManager.blockAbility(player);
                     processedArrows.add(arrowId);
@@ -1035,10 +1170,7 @@ public class ShadowArcherPower extends Power {
             return;
         }
         // Track over a snapshot because split-shot processing can add two new arrows.
-        List<ArrowEntity> arrows = new ArrayList<>();
-        for (Entity entity : world.iterateEntities()) {
-            if (entity instanceof ArrowEntity arrow) arrows.add(arrow);
-        }
+        List<ArrowEntity> arrows = new ArrayList<>(world.getEntitiesByClass(ArrowEntity.class, player.getBoundingBox().expand(160.0), a -> true));
         for (ArrowEntity arrow : arrows) {
             if (arrow.getOwner() == player && !processedArrows.contains(arrow.getUuid())) trackArrow(player, arrow);
             if (!player.getUuid().equals(arrowOwners.get(arrow.getUuid()))) continue;
@@ -1137,6 +1269,7 @@ public class ShadowArcherPower extends Power {
                 }
                 world.spawnParticles(ParticleTypes.SNOWFLAKE, impact.x, impact.y, impact.z, 40, 1.0, 0.8, 1.0, 0.06);
                 world.spawnParticles(ParticleTypes.CLOUD, impact.x, impact.y, impact.z, 10, 0.45, 0.3, 0.45, 0.02);
+                EpicVfx.impact(world, impact.x, impact.y, impact.z, 0.9);
                 world.playSound(null, BlockPos.ofFloored(impact), SoundEvents.BLOCK_GLASS_BREAK,
                         SoundCategory.PLAYERS, 0.8f, 1.5f);
             }
