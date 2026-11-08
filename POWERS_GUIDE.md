@@ -133,9 +133,10 @@ The shared default activation slots are **G (Primary), H (Secondary), V (Tertiar
 **Role:** Soulbound mace with out-of-water Riptide III mobility and permanent Speed II.
 
 - **Right-click (hold) — Riptide:** Hold and release right-click with the soulbound mace to launch like a Riptide III trident anywhere (no water or rain required, no cooldown or Energy cost, with trident charging animation and Riptide launch sound).
+- **Lightning on Hit & Immunity:** Melee hits with the mace summon a lightning bolt on non-ally targets (`thor_mace_lightning_on_hit`), and Thor is immune to lightning damage.
 - **Speed II:** Grants infinite Speed II while assigned.
 - **Soulbound Mace:** Unbreakable mace with fixed Density 5, Wind Burst 1, Fire Aspect 2, Curse of Vanishing, Mending, and Unbreaking 3; never drops on death and re-issues on assign/join/respawn.
-- **Tuning:** `thor_riptide_min_charge_ticks` and `thor_riptide_strength` in `yppowers_config.json`.
+- **Tuning:** `thor_riptide_min_charge_ticks`, `thor_riptide_strength`, and `thor_mace_lightning_on_hit` in `yppowers_config.json`.
 
 ## 13. Fallout Warrior — `fallout_warrior`
 

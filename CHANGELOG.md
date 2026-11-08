@@ -1,6 +1,10 @@
 # Changelog
 
-**Current source version:** `1.4.0` · Minecraft Java 1.21.11 · Fabric · Java 21
+**Current source version:** `1.4.1` · Minecraft Java 1.21.11 · Fabric · Java 21
+
+## 1.4.1 — Keep Thor lightning-on-hit and lightning immunity
+
+- **THOR:** Restored melee lightning-on-hit (`thor_mace_lightning_on_hit`, skips allies) and full lightning damage immunity (active even during Grace), alongside hold-right-click Riptide III anywhere, Speed II, and the Unbreakable soulbound mace.
 
 ## 1.4.0 — Sync 1-16-16 updates + Restore Thor Riptide & Speed II
 

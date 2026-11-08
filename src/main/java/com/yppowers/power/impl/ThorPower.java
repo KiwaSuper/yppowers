@@ -1,5 +1,7 @@
 package com.yppowers.power.impl;
 
+import com.yppowers.alliance.AllianceManager;
+import com.yppowers.config.YPConfig;
 import com.yppowers.item.YPItemData;
 import com.yppowers.power.Power;
 import com.yppowers.power.PowerType;
@@ -7,11 +9,19 @@ import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.ItemEnchantmentsComponent;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.enchantment.Enchantments;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.LightningEntity;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.SpawnReason;
+import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.entity.damage.DamageTypes;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.tag.DamageTypeTags;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.Unit;
@@ -19,8 +29,8 @@ import net.minecraft.util.math.BlockPos;
 
 /**
  * Thor: a soulbound Unbreakable enchanted mace (Density 5, Wind Burst 1, Fire Aspect 2,
- * Curse of Vanishing, Mending, Unbreaking 3), hold-and-release right-click Riptide III anywhere,
- * and permanent Speed II.
+ * Curse of Vanishing, Mending, Unbreaking 3) with lightning on hit, lightning immunity,
+ * hold-and-release right-click Riptide III anywhere, and permanent Speed II.
  */
 public class ThorPower extends Power {
     public static final String MACE_FLAG = "YPThorMace";
@@ -62,6 +72,39 @@ public class ThorPower extends Power {
     @Override
     public boolean shouldPreventDrop(ServerPlayerEntity player, ItemStack stack) {
         return isThorMace(stack);
+    }
+
+    @Override
+    public float modifyIncomingDamage(ServerPlayerEntity player, DamageSource source, float amount) {
+        if (source.isOf(DamageTypes.LIGHTNING_BOLT)
+                || source.isIn(DamageTypeTags.IS_LIGHTNING)
+                || source.getAttacker() instanceof LightningEntity
+                || source.getSource() instanceof LightningEntity) {
+            return 0.0f;
+        }
+        return amount;
+    }
+
+    @Override
+    public void onAttack(ServerPlayerEntity attacker, Entity target) {
+        if (!isThorMace(attacker.getMainHandStack())
+                || !(target instanceof LivingEntity living)
+                || !YPConfig.getInstance().thor_mace_lightning_on_hit) {
+            return;
+        }
+        if (living instanceof ServerPlayerEntity other
+                && attacker.getEntityWorld().getServer() != null
+                && AllianceManager.get(attacker.getEntityWorld().getServer()).isAlly(attacker, other)) {
+            return;
+        }
+        if (attacker.getEntityWorld() instanceof ServerWorld world) {
+            LightningEntity lightning = EntityType.LIGHTNING_BOLT.create(world, SpawnReason.TRIGGERED);
+            if (lightning != null) {
+                lightning.setChanneler(attacker);
+                lightning.refreshPositionAfterTeleport(living.getX(), living.getY(), living.getZ());
+                world.spawnEntity(lightning);
+            }
+        }
     }
 
     public static boolean isThorMace(ItemStack stack) {
