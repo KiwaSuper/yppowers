@@ -19,7 +19,8 @@ public abstract class ShadowArcherCameraMixin {
     private void yppowers$useMorphEyeHeight(EntityPose pose, CallbackInfoReturnable<Float> cir) {
         MinecraftClient client = MinecraftClient.getInstance();
         if ((Object) this == client.player && ClientPowerData.shadowArcherMorphed) {
-            cir.setReturnValue(ClientPowerData.shadowArcherMorphEyeHeight);
+            // Clamped so giants are not unreachable-high and tiny forms do not sit inside the floor.
+            cir.setReturnValue(Math.max(0.45F, Math.min(2.6F, ClientPowerData.shadowArcherMorphEyeHeight)));
         }
     }
 }

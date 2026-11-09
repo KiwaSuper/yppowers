@@ -45,6 +45,7 @@ import net.minecraft.world.World;
 import net.minecraft.registry.RegistryKey;
 
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 
 /** Time Warper shared state. Histories and stops are advanced once per server tick. */
 public class TimeWarperPower extends Power {
@@ -56,11 +57,14 @@ public class TimeWarperPower extends Power {
     private final Map<UUID, Deque<PlayerSnapshot>> playerHistories = new HashMap<>();
     private final Map<UUID, BlackHoleState> blackHoles = new HashMap<>();
     private static final Map<UUID, Integer> TIME_SHARD_LIFETIME = new HashMap<>();
+    /** Loose Golden Time Shards on the ground; they are touch pickups that only the Time Warper can collect. */
+    private static final Set<UUID> GOLDEN_SHARD_IDS = new HashSet<>();
     private static final class TimeClone { final ZombieEntity entity; final boolean elite; int ticks;
         TimeClone(ZombieEntity entity, boolean elite, int ticks) { this.entity=entity; this.elite=elite; this.ticks=ticks; } }
     private final Map<UUID, List<TimeClone>> timeClones = new HashMap<>();
     private final Map<UUID, Entity> lastOwnerTargets = new HashMap<>();
     private final List<BlackHoleImplosionVfx> blackHoleImplosionVfx = new ArrayList<>();
+    private final List<BlackHoleBlast> blackHoleBlasts = new ArrayList<>();
     private static final int BLACK_HOLE_IMPLOSION_VFX_TICKS = 5;
     private static final TintedParticleEffect BLACK_HOLE_DARK_PARTICLE =
             TintedParticleEffect.create(ParticleTypes.ENTITY_EFFECT, 0x08080C);
@@ -124,6 +128,9 @@ public class TimeWarperPower extends Power {
         int terrainZ;
         boolean terrainFinished;
         boolean imploded;
+        /** Items absorbed so far (destroyed blocks count fractionally); drives the final explosion power. */
+        double absorbed;
+        int lastDisplayed = -1;
 
         BlackHoleState(UUID ownerId, ServerWorld world, Vec3d center, double terrainRadius, boolean terrainEnabled) {
             this.ownerId = ownerId;
@@ -200,6 +207,55 @@ public class TimeWarperPower extends Power {
             this.center = center;
             this.radius = radius;
         }
+    }
+
+    /** The charged final explosion that follows the implosion; gameplay resolves at age 0 and the shockwave plays out after. */
+    private static final class BlackHoleBlast {
+        final ServerWorld world;
+        final Vec3d center;
+        final UUID ownerId;
+        final double radius;
+        final double multiplier;
+        final int duration;
+        int age;
+        BlackHoleBlast(ServerWorld world, Vec3d center, UUID ownerId, double radius, double multiplier, int delay) {
+            this.world = world; this.center = center; this.ownerId = ownerId; this.radius = radius; this.multiplier = multiplier;
+            this.duration = (int) Math.round(20 + 6 * multiplier);
+            this.age = -delay;
+        }
+    }
+
+    private static double blackHolePowerFraction(BlackHoleState hole, YPConfig config) {
+        return Math.max(0.0, Math.min(1.0, hole.absorbed / Math.max(1.0, config.time_warper_black_hole_items_for_max_power)));
+    }
+
+    private static double blackHoleMultiplier(BlackHoleState hole, YPConfig config) {
+        return 1.0 + (Math.max(1.0, config.time_warper_black_hole_max_power_multiplier) - 1.0) * blackHolePowerFraction(hole, config);
+    }
+
+    /** Damages a target; stacks dropped by a mob that dies from it are removed and their count is returned. */
+    private static int damageWithoutMobDrops(ServerWorld world, LivingEntity target, float amount) {
+        boolean mob = target instanceof MobEntity;
+        Box dropBox = target.getBoundingBox().expand(4.0);
+        Set<Integer> before = new HashSet<>();
+        if (mob) for (ItemEntity existing : world.getEntitiesByClass(ItemEntity.class, dropBox, i -> true)) before.add(existing.getId());
+        target.damage(world, world.getDamageSources().magic(), amount);
+        int removed = 0;
+        if (mob && !target.isAlive()) {
+            for (ItemEntity drop : world.getEntitiesByClass(ItemEntity.class, dropBox, i -> !before.contains(i.getId()))) {
+                removed += drop.getStack().getCount();
+                drop.discard();
+            }
+        }
+        return removed;
+    }
+
+    private static void cosmeticLightning(ServerWorld world, double x, double y, double z) {
+        net.minecraft.entity.LightningEntity bolt = EntityType.LIGHTNING_BOLT.create(world, SpawnReason.TRIGGERED);
+        if (bolt == null) return;
+        bolt.setCosmetic(true);
+        bolt.refreshPositionAfterTeleport(x, y, z);
+        world.spawnEntity(bolt);
     }
 
     private static class PlayerSnapshot {
@@ -286,7 +342,7 @@ public class TimeWarperPower extends Power {
 
             // Entities spawned during Time Stop are also frozen before their next tick.
             ServerPlayerEntity caster = server.getPlayerManager().getPlayer(casterId);
-            if (caster != null) {
+            if (caster != null && server.getTicks() % 2 == 0) {
                 Set<Entity> known = Collections.newSetFromMap(new IdentityHashMap<>());
                 for (FrozenEntity fe : frozen) known.add(fe.entity);
                 AllianceManager alliances = AllianceManager.get(server);
@@ -369,6 +425,14 @@ public class TimeWarperPower extends Power {
         frozenEntities.put(uuid, frozen);
         player.getEntityWorld().playSound(null, player.getBlockPos(), SoundEvents.BLOCK_END_PORTAL_SPAWN, SoundCategory.PLAYERS, 1.0f, 1.0f);
         player.sendMessage(Text.literal("Time Stop!"), true);
+        if (player.getEntityWorld() instanceof ServerWorld stopWorld) {
+            // Reality-freeze: a pale shockwave, a light pillar and a clock-hand helix around the caster.
+            EpicVfx.shockwave(stopWorld, player.getX(), player.getY(), player.getZ(), 14.0);
+            EpicVfx.ring(stopWorld, ParticleTypes.END_ROD, player.getX(), player.getY() + 1.0, player.getZ(), 0.5, 0.55, 40, 0.0);
+            EpicVfx.helix(stopWorld, ParticleTypes.REVERSE_PORTAL, player.getX(), player.getY(), player.getZ(), 3.0, 1.2, 3.0, 30, 0.1);
+            EpicVfx.column(stopWorld, ParticleTypes.END_ROD, player.getX(), player.getY(), player.getZ(), 8.0, 14);
+            EpicVfx.flash(stopWorld, player.getX(), player.getY() + 1.0, player.getZ());
+        }
     }
 
     @Override
@@ -431,7 +495,8 @@ public class TimeWarperPower extends Power {
             // the original `progress` still drives the gameplay pull below unchanged.
             double visualProgress = Math.min(1.0, hole.elapsedTicks / (double) (charge + pull));
             double maxVisualRadius = Math.max(2.5, config.time_warper_black_hole_entity_radius * 0.45);
-            double ballRadius = 0.35 + maxVisualRadius * Math.sqrt(visualProgress);
+            double powerFraction = blackHolePowerFraction(hole, config);
+            double ballRadius = (0.35 + maxVisualRadius * Math.sqrt(visualProgress)) * (1.0 + 0.8 * powerFraction);
             boolean visualFrame = hole.elapsedTicks % 3 == 0;
             if (visualFrame) {
                 hole.world.spawnParticles(BLACK_HOLE_DARK_PARTICLE,
@@ -458,6 +523,25 @@ public class TimeWarperPower extends Power {
                             0.03, 0.03, 0.03, 0.004);
                 }
             }
+            if (visualFrame && powerFraction > 0.02) {
+                // Accretion disk and polar jets grow with every item swallowed.
+                double diskRadius = ballRadius * (1.2 + 0.8 * powerFraction);
+                int diskPoints = (int) (10 + 26 * powerFraction);
+                double spin = server.getTicks() * 0.35;
+                for (int i = 0; i < diskPoints; i++) {
+                    double a = spin + 2.0 * Math.PI * i / diskPoints;
+                    hole.world.spawnParticles(ParticleTypes.SOUL_FIRE_FLAME,
+                            hole.center.x + Math.cos(a) * diskRadius, hole.center.y + Math.sin(a) * diskRadius * 0.16,
+                            hole.center.z + Math.sin(a) * diskRadius, 0, -Math.sin(a), 0.0, Math.cos(a), 0.06);
+                }
+                if (powerFraction > 0.25) {
+                    for (int k = 0; k < 5; k++) {
+                        double off = ballRadius * (0.6 + k * 0.5);
+                        hole.world.spawnParticles(ParticleTypes.END_ROD, hole.center.x, hole.center.y + off, hole.center.z, 0, 0.0, 1.0, 0.0, 0.28);
+                        hole.world.spawnParticles(ParticleTypes.END_ROD, hole.center.x, hole.center.y - off, hole.center.z, 0, 0.0, -1.0, 0.0, 0.28);
+                    }
+                }
+            }
             if (charging) {
                 // Begin bounded terrain processing during the charge so ordinary settings can
                 // finish the eligible terrain work by the implosion rather than deleting blocks
@@ -471,6 +555,12 @@ public class TimeWarperPower extends Power {
             }
             applyBlackHolePull(hole, owner, progress, config);
             processBlackHoleTerrain(hole, owner, config);
+            int shown = (int) hole.absorbed;
+            if (shown != hole.lastDisplayed && hole.elapsedTicks % 5 == 0) {
+                hole.lastDisplayed = shown;
+                owner.sendMessage(Text.literal(String.format(Locale.ROOT, "BLACK HOLE — %d items absorbed — Power x%.2f",
+                        shown, blackHoleMultiplier(hole, config))).formatted(Formatting.DARK_PURPLE), true);
+            }
             if (hole.elapsedTicks >= charge + pull) {
                 hole.imploded = true;
                 finishBlackHole(hole, owner, config);
@@ -482,6 +572,7 @@ public class TimeWarperPower extends Power {
 
     /** Runs only particles after the gameplay implosion has already resolved. */
     private void tickBlackHoleImplosionVfx() {
+        tickBlackHoleBlasts();
         if (blackHoleImplosionVfx.isEmpty()) return;
         Iterator<BlackHoleImplosionVfx> iterator = blackHoleImplosionVfx.iterator();
         while (iterator.hasNext()) {
@@ -520,6 +611,88 @@ public class TimeWarperPower extends Power {
         }
     }
 
+    private void tickBlackHoleBlasts() {
+        if (blackHoleBlasts.isEmpty()) return;
+        Iterator<BlackHoleBlast> iterator = blackHoleBlasts.iterator();
+        while (iterator.hasNext()) {
+            BlackHoleBlast blast = iterator.next();
+            blast.age++;
+            if (blast.age < 0) continue;
+            if (blast.age == 0) detonateBlackHoleBlast(blast);
+            double progress = Math.min(1.0, blast.age / (double) blast.duration);
+            double r = blast.radius * (1.0 - Math.pow(1.0 - progress, 2.0)); // fast start, easing out
+            if (blast.age <= 12 || blast.age % 2 == 0) {
+                int points = (int) Math.max(24, Math.min(64, 24 + r * 3));
+                for (int i = 0; i < points; i++) {
+                    double a = 2.0 * Math.PI * i / points;
+                    double ox = Math.cos(a) * r, oz = Math.sin(a) * r;
+                    blast.world.spawnParticles(ParticleTypes.CLOUD, blast.center.x + ox, blast.center.y + 0.15, blast.center.z + oz, 1, 0.1, 0.05, 0.1, 0.01);
+                    if (i % 2 == 0) blast.world.spawnParticles(ParticleTypes.SOUL_FIRE_FLAME, blast.center.x + ox * 0.85, blast.center.y + 0.4, blast.center.z + oz * 0.85, 1, 0.05, 0.3, 0.05, 0.02);
+                }
+                // Expanding dome: three latitude rings sweep upward as the wave grows.
+                for (int ring = 1; ring <= 3; ring++) {
+                    double elevation = ring * Math.PI / 8.0;
+                    double rr = r * Math.cos(elevation), yy = blast.center.y + r * Math.sin(elevation) * 0.8;
+                    for (int i = 0; i < points / 2; i++) {
+                        double a = 4.0 * Math.PI * i / points;
+                        blast.world.spawnParticles(ParticleTypes.END_ROD, blast.center.x + Math.cos(a) * rr, yy, blast.center.z + Math.sin(a) * rr, 1, 0.02, 0.02, 0.02, 0.0);
+                    }
+                }
+            }
+            if (blast.multiplier >= 2.0 && blast.age % 4 == 0 && blast.age <= 16) {
+                for (int k = 0; k < (int) blast.multiplier; k++) {
+                    double a = ThreadLocalRandom.current().nextDouble(0, Math.PI * 2);
+                    double d = ThreadLocalRandom.current().nextDouble(0.2, 0.8) * blast.radius;
+                    cosmeticLightning(blast.world, blast.center.x + Math.cos(a) * d, blast.center.y, blast.center.z + Math.sin(a) * d);
+                }
+            }
+            if (blast.age >= blast.duration) iterator.remove();
+        }
+    }
+
+    private void detonateBlackHoleBlast(BlackHoleBlast blast) {
+        ServerWorld world = blast.world;
+        Vec3d c = blast.center;
+        double m = blast.multiplier;
+        world.playSound(null, BlockPos.ofFloored(c), SoundEvents.ENTITY_GENERIC_EXPLODE.value(), SoundCategory.PLAYERS, 6.0f, 0.4f);
+        world.playSound(null, BlockPos.ofFloored(c), SoundEvents.ENTITY_LIGHTNING_BOLT_THUNDER, SoundCategory.PLAYERS, 8.0f, 0.5f);
+        world.playSound(null, BlockPos.ofFloored(c), SoundEvents.ENTITY_WARDEN_SONIC_BOOM, SoundCategory.PLAYERS, 5.0f, 0.6f);
+        for (int i = 0; i < Math.min(4, 1 + (int) m); i++) {
+            world.spawnParticles(ParticleTypes.EXPLOSION_EMITTER, c.x + (i == 0 ? 0 : ThreadLocalRandom.current().nextDouble(-2, 2)), c.y + i * 0.6,
+                    c.z + (i == 0 ? 0 : ThreadLocalRandom.current().nextDouble(-2, 2)), 1, 0, 0, 0, 0);
+        }
+        world.spawnParticles(ParticleTypes.SONIC_BOOM, c.x, c.y + 0.5, c.z, 1, 0, 0, 0, 0);
+        EpicVfx.flash(world, c.x, c.y + 0.5, c.z);
+        EpicVfx.sphereBurst(world, ParticleTypes.END_ROD, c.x, c.y + 0.5, c.z, (int) (70 * Math.min(2.5, m)), 0.55 * m);
+        EpicVfx.sphereBurst(world, ParticleTypes.SOUL_FIRE_FLAME, c.x, c.y + 0.5, c.z, (int) (50 * Math.min(2.5, m)), 0.4 * m);
+        EpicVfx.column(world, ParticleTypes.END_ROD, c.x, c.y, c.z, 10.0 * m, 24);
+        EpicVfx.shockwave(world, c.x, c.y, c.z, blast.radius);
+        cosmeticLightning(world, c.x, c.y, c.z);
+
+        ServerPlayerEntity owner = world.getServer().getPlayerManager().getPlayer(blast.ownerId);
+        if (owner == null || !owner.isAlive()) return;
+        YPConfig config = YPConfig.getInstance();
+        float baseDamage = (float) Math.max(0.0, Math.min(10.0, config.time_warper_black_hole_max_damage));
+        Box area = new Box(c.x - blast.radius, c.y - blast.radius, c.z - blast.radius, c.x + blast.radius, c.y + blast.radius, c.z + blast.radius);
+        for (LivingEntity target : world.getEntitiesByClass(LivingEntity.class, area,
+                e -> e != owner && !e.isRemoved() && e.isAlive() && (e instanceof ServerPlayerEntity || e instanceof MobEntity))) {
+            double distance = Math.sqrt(target.squaredDistanceTo(c));
+            if (distance > blast.radius) continue;
+            if (target instanceof ServerPlayerEntity && !config.time_warper_black_hole_affect_players) continue;
+            if (target instanceof MobEntity && !config.time_warper_black_hole_affect_mobs) continue;
+            if (target instanceof ServerPlayerEntity other && AllianceManager.get(world.getServer()).isAlly(owner, other)) continue;
+            if (PowerCombatUtil.isFriendlyMinion(owner, target)) continue;
+            double falloff = 1.0 - 0.6 * (distance / blast.radius);
+            float extra = (float) Math.min(config.time_warper_black_hole_max_blast_damage, baseDamage * (m - 1.0) * 1.5 * falloff);
+            if (extra > 0.0f) damageWithoutMobDrops(world, target, extra);
+            Vec3d away = target.getEntityPos().subtract(c);
+            if (away.lengthSquared() < 1.0e-5) away = new Vec3d(0, 1, 0);
+            Vec3d push = away.normalize().multiply(0.9 + 0.5 * m * falloff).add(0, 0.45 + 0.1 * m, 0);
+            target.setVelocity(push);
+            ((com.yppowers.mixin.EntityVelocityAccessor) target).invokeYppowersScheduleVelocityUpdate();
+        }
+    }
+
     private void applyBlackHolePull(BlackHoleState hole, ServerPlayerEntity owner, double progress, YPConfig config) {
         double radius = Math.max(1.0, config.time_warper_black_hole_entity_radius);
         Box area = new Box(hole.center.x - radius, hole.center.y - radius, hole.center.z - radius,
@@ -531,6 +704,15 @@ public class TimeWarperPower extends Power {
             if (entity instanceof MobEntity && !config.time_warper_black_hole_affect_mobs) continue;
             if (!(entity instanceof ServerPlayerEntity) && !(entity instanceof MobEntity) && !(entity instanceof ItemEntity)) continue;
             if (entity instanceof ServerPlayerEntity other && AllianceManager.get(owner.getEntityWorld().getServer()).isAlly(owner, other)) continue;
+            if (entity instanceof ItemEntity item && item.squaredDistanceTo(hole.center) <= (1.5 + 2.0 * progress) * (1.5 + 2.0 * progress)) {
+                // Swallowed: the stack is destroyed and added to the charge.
+                hole.absorbed += item.getStack().getCount();
+                hole.world.spawnParticles(ParticleTypes.REVERSE_PORTAL, item.getX(), item.getY() + 0.2, item.getZ(), 6, 0.1, 0.1, 0.1, 0.12);
+                if (hole.elapsedTicks % 2 == 0) hole.world.playSound(null, item.getBlockPos(), SoundEvents.ENTITY_ENDERMAN_TELEPORT, SoundCategory.PLAYERS,
+                        0.25f, (float) (0.6 + blackHolePowerFraction(hole, config) * 1.2));
+                item.discard();
+                continue;
+            }
             Vec3d direction = hole.center.subtract(entity.getEntityPos());
             if (direction.lengthSquared() < 1.0e-5) continue;
             Vec3d impulse = direction.normalize().multiply(0.035 + progress * 0.12);
@@ -563,12 +745,14 @@ public class TimeWarperPower extends Power {
             BlockEntity blockEntity = hole.world.getBlockEntity(pos);
             if (blockEntity != null) continue;
             if (pos.getSquaredDistance(hole.center.x, hole.center.y, hole.center.z) > config.time_warper_black_hole_terrain_radius * config.time_warper_black_hole_terrain_radius) continue;
-            hole.world.breakBlock(pos, true, owner);
+            hole.world.breakBlock(pos, false, owner); // no drops: the Black Hole annihilates what it removes
+            hole.absorbed += Math.max(0.0, config.time_warper_black_hole_block_item_value);
         }
     }
 
     private void finishBlackHole(BlackHoleState hole, ServerPlayerEntity owner, YPConfig config) {
-        double radius = Math.max(1.0, config.time_warper_black_hole_implosion_radius);
+        double multiplier = blackHoleMultiplier(hole, config);
+        double radius = Math.max(1.0, config.time_warper_black_hole_implosion_radius) * (1.0 + (multiplier - 1.0) * 0.5);
         Box area = new Box(hole.center.x-radius, hole.center.y-radius, hole.center.z-radius,
                 hole.center.x+radius, hole.center.y+radius, hole.center.z+radius);
         float damage = (float) Math.max(0.0, Math.min(10.0, config.time_warper_black_hole_max_damage));
@@ -579,7 +763,7 @@ public class TimeWarperPower extends Power {
             if (target instanceof ServerPlayerEntity && !config.time_warper_black_hole_affect_players) continue;
             if (target instanceof MobEntity && !config.time_warper_black_hole_affect_mobs) continue;
             if (target instanceof ServerPlayerEntity other && AllianceManager.get(hole.world.getServer()).isAlly(owner, other)) continue;
-            if (damage > 0.0f) target.damage(hole.world, hole.world.getDamageSources().magic(), damage);
+            if (damage > 0.0f) hole.absorbed += damageWithoutMobDrops(hole.world, target, damage);
             Vec3d direction = hole.center.subtract(target.getEntityPos());
             if (direction.lengthSquared() > 1.0e-5) target.setVelocity(direction.normalize().multiply(0.95));
         }
@@ -588,7 +772,12 @@ public class TimeWarperPower extends Power {
         double vfxRadius = Math.max(2.5, config.time_warper_black_hole_entity_radius * 0.45);
         blackHoleImplosionVfx.add(new BlackHoleImplosionVfx(hole.world, hole.center, vfxRadius));
         hole.world.playSound(null, BlockPos.ofFloored(hole.center), SoundEvents.ENTITY_GENERIC_EXPLODE.value(), SoundCategory.PLAYERS, 3.0f, 0.45f);
-        owner.sendMessage(Text.literal("Black Hole imploded.").formatted(Formatting.DARK_PURPLE), true);
+        if (multiplier > 1.01) {
+            blackHoleBlasts.add(new BlackHoleBlast(hole.world, hole.center, hole.ownerId,
+                    Math.max(1.0, config.time_warper_black_hole_implosion_radius) * multiplier, multiplier, BLACK_HOLE_IMPLOSION_VFX_TICKS));
+        }
+        owner.sendMessage(Text.literal(String.format(Locale.ROOT, "Black Hole imploded — %d items absorbed — Power x%.2f",
+                (int) hole.absorbed, multiplier)).formatted(Formatting.DARK_PURPLE), true);
     }
 
     public boolean isBlackHoleCharging(UUID id) { return blackHoles.containsKey(id); }
@@ -680,6 +869,8 @@ public class TimeWarperPower extends Power {
             }
             targetWorld.playSound(null, target.getBlockPos(), SoundEvents.ITEM_CHORUS_FRUIT_TELEPORT, SoundCategory.PLAYERS, 1.0f, 1.0f);
             targetWorld.spawnParticles(ParticleTypes.PORTAL, target.getX(), target.getY() + 1.0, target.getZ(), 24, 0.5, 0.8, 0.5, 0.1);
+            EpicVfx.implosion(targetWorld, ParticleTypes.REVERSE_PORTAL, target.getX(), target.getY() + 0.5, target.getZ(), 2.0, 18, 0.25);
+            EpicVfx.shockwave(targetWorld, target.getX(), target.getY(), target.getZ(), 4.0);
             if (target != player) {
                 target.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 120, 1));
                 target.addStatusEffect(new StatusEffectInstance(StatusEffects.MINING_FATIGUE, 120, 0));
@@ -745,6 +936,8 @@ public class TimeWarperPower extends Power {
         world.spawnEntity(clone);
         list.add(new TimeClone(clone, elite, Math.max(20, YPConfig.getInstance().time_warper_clone_lifespan_ticks)));
         world.spawnParticles(ParticleTypes.PORTAL, clone.getX(), clone.getBodyY(.5), clone.getZ(), elite ? 40 : 18, .35, .5, .35, .2);
+        EpicVfx.activation(world, clone.getX(), clone.getY(), clone.getZ(), elite ? 1.3 : 0.9);
+        EpicVfx.shockwave(world, clone.getX(), clone.getY(), clone.getZ(), elite ? 5.0 : 3.5);
         world.playSound(null, owner.getBlockPos(), SoundEvents.ENTITY_ENDERMAN_TELEPORT, SoundCategory.PLAYERS, .8f, elite ? .6f : 1.3f);
         owner.sendMessage(Text.literal(elite ? "Elite Time Clone summoned." : "Time Clone summoned. Shards remaining: " + data.getTimeShards(id)), true);
     }
@@ -841,32 +1034,62 @@ public class TimeWarperPower extends Power {
         boolean boss=dead.getType()==EntityType.WITHER||dead.getType()==EntityType.ENDER_DRAGON||dead.getType()==EntityType.WARDEN||dead.getType()==EntityType.ELDER_GUARDIAN;
         if(boss&&world.random.nextDouble()<Math.max(0,Math.min(1,cfg.time_warper_golden_shard_drop_chance))) {
             ItemStack golden=new ItemStack(Items.NETHER_STAR);golden.set(DataComponentTypes.CUSTOM_NAME,Text.literal("Golden Time Shard").formatted(Formatting.GOLD,Formatting.BOLD));YPItemData.setFlag(golden,"YPGoldenTimeShard",true);
-            ItemEntity entity=new ItemEntity(world,dead.getX(),dead.getY()+.4,dead.getZ(),golden);entity.setPickupDelay(0);world.spawnEntity(entity);
+            ItemEntity entity=new ItemEntity(world,dead.getX(),dead.getY()+.4,dead.getZ(),golden);entity.setPickupDelay(32767);entity.setInvulnerable(true);world.spawnEntity(entity);GOLDEN_SHARD_IDS.add(entity.getUuid());
             world.spawnParticles(ParticleTypes.END_ROD,dead.getX(),dead.getY()+.5,dead.getZ(),30,.4,.4,.4,.04);
         }
     }
 
-    /** Physical contact (not homing) converts a short-lived ordinary shard into its unbounded counter. */
+    /**
+     * Physical contact (not homing) collects a shard. Only the Time Warper can collect shards: an ordinary shard
+     * becomes a counted Time Shard, a Golden shard goes into the inventory. Everyone else cannot touch them.
+     */
     public static void tryCollectTimeShard(ServerPlayerEntity player) {
+        if(TIME_SHARD_LIFETIME.isEmpty()&&GOLDEN_SHARD_IDS.isEmpty())return;
         if(player==null||player.getEntityWorld().getServer()==null||!(player.getEntityWorld() instanceof ServerWorld world))return;
-        for(ItemEntity shard:world.getEntitiesByClass(ItemEntity.class,player.getBoundingBox().expand(.2),e->YPItemData.hasFlag(e.getStack(),"YPTimeShard"))) {
+        PowerManager manager=PowerManager.get(world.getServer());
+        if(manager.getPowerType(player.getUuid())!=PowerType.TIME_WARPER)return;
+        for(ItemEntity shard:world.getEntitiesByClass(ItemEntity.class,player.getBoundingBox().expand(.2),
+                e->YPItemData.hasFlag(e.getStack(),"YPTimeShard")||YPItemData.hasFlag(e.getStack(),"YPGoldenTimeShard"))) {
             if(!shard.getBoundingBox().intersects(player.getBoundingBox()))continue;
-            PowerManager.get(world.getServer()).addTimeShards(player.getUuid(),1);shard.discard();
-            player.sendMessage(Text.literal("Time Shard collected: "+PowerManager.get(world.getServer()).getTimeShards(player.getUuid())).formatted(Formatting.DARK_PURPLE),true);
+            if(YPItemData.hasFlag(shard.getStack(),"YPGoldenTimeShard")) {
+                ItemStack golden=shard.getStack().copy();
+                if(!player.getInventory().insertStack(golden))continue; // inventory full: the shard stays on the ground
+                GOLDEN_SHARD_IDS.remove(shard.getUuid());shard.discard();
+                player.sendMessage(Text.literal("Golden Time Shard collected.").formatted(Formatting.GOLD),true);
+                world.playSound(null,player.getBlockPos(),SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME,SoundCategory.PLAYERS,.7f,1.2f);
+                continue;
+            }
+            manager.addTimeShards(player.getUuid(),1);shard.discard();
+            player.sendMessage(Text.literal("Time Shard collected: "+manager.getTimeShards(player.getUuid())).formatted(Formatting.DARK_PURPLE),true);
             world.playSound(null,player.getBlockPos(),SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME,SoundCategory.PLAYERS,.55f,1.7f);
         }
     }
 
-    private static void tickTimeShards(MinecraftServer server) {
-        Set<UUID> live=new HashSet<>();
-        for(ServerWorld world:server.getWorlds())for(Entity entity:world.iterateEntities())if(entity instanceof ItemEntity item&&YPItemData.hasFlag(item.getStack(),"YPTimeShard")) {
-            UUID id=item.getUuid();live.add(id);int remaining=TIME_SHARD_LIFETIME.getOrDefault(id,Math.max(1,YPConfig.getInstance().time_warper_time_shard_lifetime_ticks))-1;
-            if(remaining<=0){item.discard();TIME_SHARD_LIFETIME.remove(id);continue;}TIME_SHARD_LIFETIME.put(id,remaining);
-            if(server.getTicks()%3==0)world.spawnParticles(BLACK_HOLE_DARK_PARTICLE,item.getX(),item.getY()+.15,item.getZ(),3,.12,.12,.12,0);
+    /** Looks a shard up by UUID instead of scanning every loaded entity each tick. */
+    private static ItemEntity findShard(MinecraftServer server,UUID id) {
+        for(ServerWorld world:server.getWorlds()) {
+            Entity entity=world.getEntity(id);
+            if(entity instanceof ItemEntity item)return item;
         }
-        TIME_SHARD_LIFETIME.keySet().retainAll(live);
+        return null;
     }
 
-    public static void clearTimeShardRuntimeState() { TIME_SHARD_LIFETIME.clear(); }
+    private static void tickTimeShards(MinecraftServer server) {
+        if(TIME_SHARD_LIFETIME.isEmpty()&&GOLDEN_SHARD_IDS.isEmpty())return;
+        Iterator<Map.Entry<UUID,Integer>> it=TIME_SHARD_LIFETIME.entrySet().iterator();
+        while(it.hasNext()) {
+            Map.Entry<UUID,Integer> entry=it.next();
+            ItemEntity item=findShard(server,entry.getKey());
+            if(item==null||item.isRemoved()){it.remove();continue;}
+            int remaining=entry.getValue()-1;
+            if(remaining<=0){item.discard();it.remove();continue;}
+            entry.setValue(remaining);
+            if(server.getTicks()%3==0&&item.getEntityWorld() instanceof ServerWorld shardWorld)
+                shardWorld.spawnParticles(BLACK_HOLE_DARK_PARTICLE,item.getX(),item.getY()+.15,item.getZ(),3,.12,.12,.12,0);
+        }
+        GOLDEN_SHARD_IDS.removeIf(goldenId->{ItemEntity golden=findShard(server,goldenId);return golden==null||golden.isRemoved();});
+    }
+
+    public static void clearTimeShardRuntimeState() { TIME_SHARD_LIFETIME.clear(); GOLDEN_SHARD_IDS.clear(); }
 
 }

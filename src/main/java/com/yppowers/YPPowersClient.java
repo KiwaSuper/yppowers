@@ -18,6 +18,9 @@ public class YPPowersClient implements ClientModInitializer {
         YPClientNetworking.registerClientReceivers();
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> TimeCloneSkinManager.clear());
 
+        // Runs before input handling each tick so the crosshair/climb fixes apply to that tick's clicks and movement.
+        ClientTickEvents.START_CLIENT_TICK.register(com.yppowers.client.ShadowArcherClientInput::tick);
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             YPKeybinds.tick();
             if (ClientPowerData.hudWarningTicks > 0) ClientPowerData.hudWarningTicks--;

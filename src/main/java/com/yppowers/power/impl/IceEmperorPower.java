@@ -375,6 +375,8 @@ public class IceEmperorPower extends Power {
                         24, 0.55, 0.8, 0.55, 0.02);
                 world.spawnParticles(ParticleTypes.POOF, player.getX(), player.getY() + 0.9, player.getZ(),
                         5, 0.25, 0.35, 0.25, 0.01);
+                EpicVfx.helix(world, ParticleTypes.SNOWFLAKE, player.getX(), player.getY(), player.getZ(), 2.4, 0.9, 2.0, 24, 0.06);
+                EpicVfx.ring(world, ParticleTypes.SNOWFLAKE, player.getX(), player.getY() + 0.1, player.getZ(), 0.4, 0.12, 20, 0.02);
             }
             if (config.ice_emperor_forms_sound_enabled) {
                 world.playSound(null, player.getBlockPos(), SoundEvents.BLOCK_GLASS_BREAK,
@@ -769,6 +771,8 @@ public class IceEmperorPower extends Power {
                     65, 1.5, 1.0, 1.5, 0.045);
             world.spawnParticles(new BlockStateParticleEffect(ParticleTypes.BLOCK, Blocks.PACKED_ICE.getDefaultState()),
                     player.getX(), player.getY() + 0.8, player.getZ(), 24, 1.0, 0.6, 1.0, 0.08);
+            EpicVfx.shockwave(world, player.getX(), player.getY(), player.getZ(), 5.0);
+            EpicVfx.ring(world, ParticleTypes.SNOWFLAKE, player.getX(), player.getY() + 0.2, player.getZ(), 0.6, 0.1, 24, 0.02);
             if (lowEnergy) {
                 String suffix = hostileSpawned > 0
                         ? " " + hostileSpawned + " ROGUE BEAR(S) HAVE TURNED ON YOU!"
@@ -1313,6 +1317,10 @@ public class IceEmperorPower extends Power {
             world.spawnParticles(new BlockStateParticleEffect(ParticleTypes.BLOCK, Blocks.PACKED_ICE.getDefaultState()), target.getX(), target.getY() + 1, target.getZ(), 20, 0.5, 0.5, 0.5, 0.1);
         }
         world.playSound(null, player.getBlockPos(), SoundEvents.BLOCK_GLASS_BREAK, SoundCategory.PLAYERS, 1.0f, 0.5f);
+        EpicVfx.shockwave(world, player.getX(), player.getY(), player.getZ(), 10.0);
+        EpicVfx.ring(world, ParticleTypes.SNOWFLAKE, player.getX(), player.getY() + 0.5, player.getZ(), 0.5, 0.45, 40, 0.02);
+        EpicVfx.column(world, ParticleTypes.SNOWFLAKE, player.getX(), player.getY(), player.getZ(), 8.0, 16);
+        EpicVfx.flash(world, player.getX(), player.getY() + 1.0, player.getZ());
         for (int angle = 0; angle < 360; angle += 10) {
             double radians = Math.toRadians(angle);
             world.spawnParticles(ParticleTypes.SNOWFLAKE, player.getX() + Math.cos(radians) * 10, player.getY() + 0.5, player.getZ() + Math.sin(radians) * 10, 1, 0, 0, 0, 0.1);

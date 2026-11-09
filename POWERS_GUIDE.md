@@ -1,6 +1,6 @@
 # YP Powers — Powers Guide
 
-**Target:** Minecraft Java 1.21.11 · Fabric · Java 21 · Version `1-16-8`
+**Target:** Minecraft Java 1.21.11 · Fabric · Java 21 · Version `1-16-16`
 
 This guide describes the power kits present in the source tree. Exact costs, durations, radii, damage values, entity limits, and other tunable numbers are controlled by `config/yppowers_config.json` where a setting is exposed. The guide does not replace the config and command references.
 
@@ -39,11 +39,11 @@ The shared default activation slots are **G (Primary), H (Secondary), V (Tertiar
 
 - **TIME form — G:** Time Stop freezes eligible entities for the configured duration. Allied players are excluded by the existing alliance check. New entities are tracked while the stop is active. The client receives the gray frozen-player visual state.
 - **H — Rewind:** Rewinds online players to their recorded position/orientation from approximately 25 seconds earlier when sufficient history is available. It does not create a second copy of those players.
-- **V — Black Hole:** Charges a black hole that pulls eligible entities and, when configured, processes terrain in a bounded per-tick budget before implosion. Particle emission is already throttled to selected visual frames.
+- **V — Black Hole:** Charges a black hole that pulls eligible entities and, when configured, processes terrain in a bounded per-tick budget before implosion. Every item it swallows (and, fractionally, every block it destroys) charges it: the sphere grows an accretion disk and polar jets, and the final explosion gains radius, damage and knockback plus a multi-stage shockwave with lightning. Destroyed blocks and mobs killed by it leave no item drops.
 - **REALITY form — G:** Summons an ordinary Time Clone using Time Shards and Energy.
 - **B — Elite Clone:** Requires a physical Golden Time Shard and Energy.
 - **R — Switch form:** Cycles TIME and REALITY, subject to its switch cooldown. The default switch cooldown is 10 minutes. Existing ability cooldowns and summons are not reset by switching.
-- **Time Shards:** Ordinary shards are temporary touch pickups; ordinary count is stored separately. Rare Golden Shards are physical boss-drop items. Clone lifespans pause while stored during owner disconnects; the server persists their variant and remaining lifespan.
+- **Time Shards:** Ordinary shards are temporary touch pickups that only the Time Warper can collect; ordinary count is stored separately. Rare Golden Shards are boss drops that only the Time Warper can pick up (touch). Clone lifespans pause while stored during owner disconnects; the server persists their variant and remaining lifespan.
 - **Clone appearance:** Normal clones use the summoner’s available Minecraft skin texture; elite clones use a gold-tinted version that retains the skin’s shading and transparency. Skin downloads/tinting are asynchronous and cached per client session, with Steve as the fallback. Clones remain zombie entities so their existing AI/combat model is preserved; their body geometry is therefore not an exact classic/slim player model.
 - **Tuning:** Settings use the `time_warper_*` prefix. Clone counts, shard costs/drop chances, durations, cooldowns and Black Hole terrain budgets are configurable.
 
@@ -83,6 +83,7 @@ The shared default activation slots are **G (Primary), H (Secondary), V (Tertiar
 - **V — Morph menu:** Opens the Shadow Archer morph interface through the client-server request flow.
 - **B — Arrow cycle:** Cycles through unlocked arrow variants. Split Shot is available by default; more variants unlock through the described item/mob progression.
 - **Special arrows:** The kit includes variants such as Split Shot, Homing, TNT, Lightning, Ice Prison and Railshot. Railshot alone has a progressive draw/accuracy/speed/damage sequence; switching arrow types clears its accumulated charge.
+- **Using weapons, blocks and abilities while morphed:** the disguise never blocks your crosshair or block placement, so you can attack, mine, place and use items in every form. Tall forms reach further, flying forms fly (with per-mob flight speed, revoked again when you switch to a grounded form), spiders climb walls ladder-style (forward/jump to climb, cling otherwise), striders float on lava, and aquatic forms swim and breathe underwater. Camera height is kept in a playable range.
 - **Compatibility:** Morph camera/view updates are synchronized; the morph catalog and unlocked-arrow state are synchronized/persisted through the existing system.
 - **Tuning and reference:** See `SHADOW_ARCHER_MORPH_CATALOG.md` and the `shadow_archer_*` config fields for the supported forms and arrow behaviors.
 
@@ -131,16 +132,17 @@ The shared default activation slots are **G (Primary), H (Secondary), V (Tertiar
 
 **Role:** Soulbound mace with out-of-water Riptide III mobility and permanent Speed II.
 
-- **Right-click (hold) — Riptide:** Hold and release right-click with the soulbound mace to launch like a Riptide III trident anywhere (no water or rain required, no cooldown or Energy cost).
+- **Right-click (hold) — Riptide:** Hold and release right-click with the soulbound mace to launch like a Riptide III trident anywhere (no water or rain required, no cooldown or Energy cost, with trident charging animation and Riptide launch sound).
+- **Lightning on Hit & Immunity:** Melee hits with the mace summon a lightning bolt on non-ally targets (`thor_mace_lightning_on_hit`), and Thor is immune to lightning damage.
 - **Speed II:** Grants infinite Speed II while assigned.
-- **Soulbound Mace:** Fixed Density 5, Wind Burst 1, Mending, and Unbreaking 3; never drops on death and re-issues on assign/join/respawn.
-- **Tuning:** `thor_riptide_min_charge_ticks` and `thor_riptide_strength` in `yppowers_config.json`.
+- **Soulbound Mace:** Unbreakable mace with fixed Density 5, Wind Burst 1, Fire Aspect 2, Curse of Vanishing, Mending, and Unbreaking 3; never drops on death and re-issues on assign/join/respawn.
+- **Tuning:** `thor_riptide_min_charge_ticks`, `thor_riptide_strength`, and `thor_mace_lightning_on_hit` in `yppowers_config.json`.
 
 ## 13. Fallout Warrior — `fallout_warrior`
 
 **Role:** Radioactive support aura and a poison-zone minion squad.
 
-- **G — Radioactive Warriors:** Summons the three-role radioactive squad (Healer, Defender and Assassin) under the active-minion cap and ability cooldown rules.
+- **G — Radioactive Warriors:** Summons the three-role radioactive squad (Healer and Defender pillagers plus a Vindicator Assassin) under the active-minion cap and ability cooldown rules. The squad rises out of the ground (Warden-style) when summoned. The aura and Toxic Pool edges are shown with particle rings.
 - **H — Poison pool:** Creates a temporary toxic area that damages/debuffs valid enemies in range.
 - **R — Radioactive Aura:** Toggles a no-Energy passive aura that heals allies and harms enemies at its configured interval/radius.
 - **Ally and cleanup rules:** Aura/zone/minion logic uses owner and alliance checks; summons are tracked so expired/dead minions can be cleaned up.
@@ -163,7 +165,7 @@ The shared default activation slots are **G (Primary), H (Secondary), V (Tertiar
 
 - **G — Spirit summon:** Summons the selected unlocked spirit form. Unlocks persist through the existing player data system and are progressed through mob kills/ingredients.
 - **H — Shadow Step:** Teleports toward a validated destination within the configured range.
-- **V — Restless Shadows:** Summons an aggressive shadow entity/controller for its configured duration. It seeks valid targets and stops when defeated or expired.
+- **V — Restless Shadows:** Summons an invisible, aggressive shadow for its configured duration. It has configurable health (`spirit_restless_shadows_health`), hunts whoever attacked you, whispers and beats like a heart, and plunges nearby enemy players into Darkness (`spirit_restless_shadows_darkness_*`).
 - **B / R — Cycle spirit:** Cycles the selected unlocked spirit form before summoning.
 - **Insufficient Energy:** The ultimate intentionally permits its low-Energy outcome: a red `ARE YOU SURE?` warning is visual only, followed by an uncontrollable shadow and one broad knockback event that can affect the caster/allies. This is intentionally hazardous rather than a failed activation.
 - **Tuning:** See `spirit_channeler_*` configuration values.
@@ -174,7 +176,7 @@ The shared default activation slots are **G (Primary), H (Secondary), V (Tertiar
 
 - **G — Arm Spatial Erasure:** Arms the next main-hand right-click on a block. The selected 3×3×3 region is temporarily removed and later restored under the saved-block safeguards; entities in the restored area receive the configured damage/slowness.
 - **H — Psychokinetic Grip:** Grabs a valid entity or item in range and holds it at the current distance.
-- **V — Celestial Pull:** Creates a sphere-like cluster of falling blocks above a selected/validated center, pulls eligible non-player entities toward the gravity well, then removes the falling blocks at impact and deals its configured magic damage.
+- **V — Celestial Pull:** Assembles a massive hollow moon of blocks (radius 5 x `illusionist_celestial_moon_scale` 1.6, about 8 blocks, capped at 14) that spirals into existence above the target, with a rotating corona, a tightening ground shadow, gravity tendrils and a fiery final approach, then disintegrates into debris in the crater blast. Every non-allied entity and item in a massive area becomes weightless while it is active, mobs are drawn up beneath the moon, and when it ends gravity returns and the moon crashes down in a staged crater blast dealing heavy damage. Tuned by `illusionist_celestial_moon_radius`, `_moon_height`, `_weightless_radius`, `_crater_radius` and `_crater_damage`.
 - **B — Throw Grip:** Throws the held target in the look direction and starts the release cooldown.
 - **R — Increase grip distance:** When a target is held, increases the hold distance within its configured 2–10 block bounds. The current implementation uses R rather than mouse-wheel input.
 - **Passive attraction:** Nearby item entities and XP orbs are pulled toward the owner on a periodic interval.
@@ -184,11 +186,11 @@ The shared default activation slots are **G (Primary), H (Secondary), V (Tertiar
 
 **Role:** Foxfire damage-over-time, transformation mobility, and burst/pounce attacks.
 
-- **G — Claw Swipe:** Sweeping melee attack that knocks enemies back and applies Foxfire.
+- **G — Claw Swipe:** Sweeping melee attack that knocks enemies back and applies Foxfire. Afflicted targets burn with blue soul-fire flames and a glowing outline.
 - **H — Foxfire Burst:** Launches a cluster of supernatural flame projectiles that can apply Foxfire.
 - **V — Spirit Pounce:** Leaps toward a valid target, damaging and launching it on a successful hit.
 - **B — Foxfire Detonation:** Processes valid targets currently afflicted with Foxfire once per activation, using a controlled detonation effect rather than unrestricted persistent TNT.
-- **R — Giant Kitsune transformation:** Activates/deactivates the timed fast transformation, with Foxfire trails and configured movement speed. It uses the existing vanilla-fox-oriented appearance approach and restores player state through the documented lifecycle hooks.
+- **R — Giant Kitsune transformation:** Activates/deactivates the timed fast transformation, with Foxfire trails and configured movement speed. It uses the existing vanilla-fox-oriented appearance approach and restores player state through the documented lifecycle hooks. While transformed, right-clicking with a block in hand places it on the surface you are looking at up to `kitsune_fox_place_range` blocks away.
 - **Foxfire:** Deals configured damage over time; repeated applications follow the existing refresh rules. Owner/allies are protected by the power's target checks.
 - **Tuning:** See `kitsune_*` settings.
 
@@ -224,4 +226,5 @@ The shared default activation slots are **G (Primary), H (Secondary), V (Tertiar
 
 - In v1-16-4 only, GOAT passives were forced on. Version 1-16-5 restores the R-key toggle and persisted enabled/disabled state.
 - Major activation and impact visuals now receive additional bounded particle layers through the shared `EpicVfx` helper. These accents are event-driven rather than continuously spawned and do not alter combat or ability rules.
+- v1-16-13 upgraded the shared visual helper (expanding shockwaves, converging rings, rising helixes, light pillars, flashes) and added cinematic activations to Thor, Fire God, Ice Emperor, Poseidon, Shadow Archer, Teleport Gambit, Stick of Deletion, Boots of the Sky, Illusionist, Spirit Channeler, Spidey, Kitsune, Serious Punch and Time Warper (Time Stop, clones, Black Hole).
 - The v1-16-4 visual accents remain applied to GOAT jumps/Overdrive, HELLDIVE, Thor hammer impact, Black Hole implosion, Kitsune attacks, Spidey Dive finisher, Spirit summons, Celestial Pull, Fallout summons and Ice Emperor meteor impacts.

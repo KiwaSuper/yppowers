@@ -333,6 +333,9 @@ public class BootsOfTheSkyPower extends Power {
                 40, radius * 0.40, radius * 0.40, radius * 0.40, 0.16);
         state.world.spawnParticles(TintedParticleEffect.create(ParticleTypes.FLASH, 0xFFFFFF), state.target.x, state.target.y, state.target.z, 1, 0, 0, 0, 0);
         state.world.spawnParticles(ParticleTypes.EXPLOSION, state.target.x, state.target.y, state.target.z, 8, radius * 0.25, radius * 0.25, radius * 0.25, 0);
+        EpicVfx.shockwave(state.world, state.target.x, state.target.y, state.target.z, radius);
+        EpicVfx.column(state.world, ParticleTypes.ELECTRIC_SPARK, state.target.x, state.target.y, state.target.z, 14.0, 20);
+        EpicVfx.sphereBurst(state.world, ParticleTypes.END_ROD, state.target.x, state.target.y + 0.5, state.target.z, 48, 0.5);
         state.world.playSound(null, BlockPos.ofFloored(state.target.x, state.target.y, state.target.z),
                 SoundEvents.ENTITY_LIGHTNING_BOLT_THUNDER, SoundCategory.WEATHER, 5.0f, 0.65f);
         state.world.playSound(null, BlockPos.ofFloored(state.target.x, state.target.y, state.target.z),

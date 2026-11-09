@@ -470,6 +470,9 @@ public final class TeleportGambitDomainManager {
         }
         domainWorld.spawnParticles(ParticleTypes.EXPLOSION_EMITTER, charge.domainCenter.getX() + 0.5,
                 FLOOR_Y + 1.0, charge.domainCenter.getZ() + 0.5, 1, 0, 0, 0, 0);
+        EpicVfx.shockwave(domainWorld, charge.domainCenter.getX() + 0.5, FLOOR_Y + 1.0, charge.domainCenter.getZ() + 0.5, 18.0);
+        EpicVfx.column(domainWorld, ParticleTypes.END_ROD, charge.domainCenter.getX() + 0.5, FLOOR_Y, charge.domainCenter.getZ() + 0.5, 20.0, 24);
+        EpicVfx.flash(domainWorld, charge.domainCenter.getX() + 0.5, FLOOR_Y + 1.5, charge.domainCenter.getZ() + 0.5);
     }
 
     private static ServerPlayerEntity playerById(MinecraftServer server, UUID id) {

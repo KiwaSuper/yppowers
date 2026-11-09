@@ -8,6 +8,7 @@ import com.yppowers.power.PowerManager;
 import com.yppowers.power.PowerType;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -21,6 +22,8 @@ public abstract class MobEntityMixin {
     private void yppowers$setTarget(LivingEntity target, CallbackInfo ci) {
         if (target instanceof ServerPlayerEntity player && yppowers$shouldIgnore(player)) {
             ci.cancel();
+        } else if (target != null && yppowers$sameSide((MobEntity) (Object) this, target)) {
+            ci.cancel(); // minions of one owner (or allied owners) never target each other
         }
     }
 
@@ -34,7 +37,30 @@ public abstract class MobEntityMixin {
         MobEntity mob = (MobEntity) (Object) this;
         if (mob.getTarget() instanceof ServerPlayerEntity player && yppowers$shouldIgnore(player)) {
             mob.setTarget(null);
+        } else if (mob.getTarget() != null && yppowers$sameSide(mob, mob.getTarget())) {
+            mob.setTarget(null);
         }
+    }
+
+    @Unique
+    private static String yppowers$ownerTag(MobEntity mob) {
+        for (String tag : mob.getCommandTags()) if (tag.startsWith("yppowers_owner_")) return tag;
+        return null;
+    }
+
+    @Unique
+    private static boolean yppowers$sameSide(MobEntity mob, LivingEntity target) {
+        if (!(target instanceof MobEntity other)) return false;
+        String a = yppowers$ownerTag(mob), b = yppowers$ownerTag(other);
+        if (a == null || b == null) return false;
+        if (a.equals(b)) return true;
+        MinecraftServer server = mob.getEntityWorld().getServer();
+        if (server == null) return false;
+        try {
+            ServerPlayerEntity ownerA = server.getPlayerManager().getPlayer(UUID.fromString(a.substring("yppowers_owner_".length())));
+            ServerPlayerEntity ownerB = server.getPlayerManager().getPlayer(UUID.fromString(b.substring("yppowers_owner_".length())));
+            return ownerA != null && ownerB != null && AllianceManager.get(server).isAlly(ownerA, ownerB);
+        } catch (IllegalArgumentException ignored) { return false; }
     }
 
     @Unique

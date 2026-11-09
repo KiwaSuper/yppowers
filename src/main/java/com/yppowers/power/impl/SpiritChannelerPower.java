@@ -134,7 +134,9 @@ public final class SpiritChannelerPower extends Power {
         BlockPos safe=findSafeSpot(world,base,3);
         if(safe==null){player.sendMessage(Text.literal("No safe destination in range."),true);return;}
         world.spawnParticles(ParticleTypes.PORTAL,player.getX(),player.getY()+.8,player.getZ(),30,.4,.6,.4,.2);
+        EpicVfx.implosion(world,ParticleTypes.PORTAL,player.getX(),player.getY()+.2,player.getZ(),1.8,16,.25);
         player.teleport(world,safe.getX()+.5,safe.getY(),safe.getZ()+.5,Set.of(),player.getYaw(),player.getPitch(),false);
+        EpicVfx.activation(world,player.getX(),player.getY(),player.getZ(),.8);
         world.spawnParticles(ParticleTypes.PORTAL,player.getX(),player.getY()+.8,player.getZ(),30,.4,.6,.4,.2);
         stepCooldown.put(id,Math.max(0,YPConfig.getInstance().spirit_shadow_step_cooldown_ticks));
     }
@@ -169,7 +171,10 @@ public final class SpiritChannelerPower extends Power {
         shade.setInvisible(true); shade.setCustomName(Text.literal("Restless Shadow").formatted(Formatting.DARK_PURPLE));
         shade.setCustomNameVisible(false); shade.addCommandTag("yppowers_restless_shadow"); shade.addCommandTag("yppowers_owner_"+id); shade.setPersistent();
         shade.addStatusEffect(new StatusEffectInstance(StatusEffects.STRENGTH,duration,2,false,false));
-        shade.getAttributeInstance(EntityAttributes.MAX_HEALTH).setBaseValue(40.0); shade.setHealth(40.0f);
+        double shadeHealth=Math.max(1.0,YPConfig.getInstance().spirit_restless_shadows_health);
+        shade.getAttributeInstance(EntityAttributes.MAX_HEALTH).setBaseValue(shadeHealth); shade.setHealth((float)shadeHealth);
+        var shadeDamage=shade.getAttributeInstance(EntityAttributes.ATTACK_DAMAGE);
+        if(shadeDamage!=null)shadeDamage.setBaseValue(Math.max(1.0,YPConfig.getInstance().spirit_restless_shadows_damage));
         world.spawnEntity(shade); list.add(new Summon(shade,duration,true));
         ultimateCooldown.put(id,Math.max(0,YPConfig.getInstance().spirit_restless_shadows_cooldown_ticks));
         if(catastrophic) {
@@ -181,14 +186,18 @@ public final class SpiritChannelerPower extends Power {
             for(Entity e:world.getOtherEntities(player,area,x->x.isAlive())) {
                 e.damage(world,world.getDamageSources().magic(),8.0f);
                 Vec3d dir=e.getEntityPos().subtract(player.getEntityPos()).normalize();
-                e.addVelocity(dir.x*3.0,1.2,dir.z*3.0); e.velocityDirty=true;
+                e.addVelocity(dir.x*3.0,1.2,dir.z*3.0); ((com.yppowers.mixin.EntityVelocityAccessor) (Object) e).invokeYppowersScheduleVelocityUpdate();
             }
             player.damage(world,world.getDamageSources().magic(),8.0f);
-            Vec3d own=player.getRotationVec(1).multiply(-3).add(0,1.2,0); player.addVelocity(own); player.velocityDirty=true;
+            Vec3d own=player.getRotationVec(1).multiply(-3).add(0,1.2,0); player.addVelocity(own); ((com.yppowers.mixin.EntityVelocityAccessor) (Object) player).invokeYppowersScheduleVelocityUpdate();
             world.spawnParticles(ParticleTypes.SONIC_BOOM,player.getX(),player.getY()+.5,player.getZ(),1,0,0,0,0);
+            EpicVfx.shockwave(world,player.getX(),player.getY(),player.getZ(),10.0);
+            EpicVfx.impact(world,player.getX(),player.getY(),player.getZ(),1.8);
             world.playSound(null,player.getBlockPos(),SoundEvents.ENTITY_WARDEN_SONIC_BOOM,SoundCategory.PLAYERS,2,0.5f);
             player.sendMessage(Text.literal("The shadow is uncontrolled! Energy collapsed and a shockwave erupted.").formatted(Formatting.DARK_RED),false);
         } else {
+            world.playSound(null,player.getBlockPos(),SoundEvents.ENTITY_ELDER_GUARDIAN_CURSE,SoundCategory.HOSTILE,1.0f,.6f);
+            world.playSound(null,player.getBlockPos(),SoundEvents.ENTITY_WARDEN_NEARBY_CLOSE,SoundCategory.HOSTILE,1.2f,.5f);
             player.sendMessage(Text.literal("Restless Shadows is hunting your enemies."),true);
             world.playSound(null,player.getBlockPos(),SoundEvents.BLOCK_END_PORTAL_SPAWN,SoundCategory.PLAYERS,1.5f,.6f);
         }
@@ -202,24 +211,40 @@ public final class SpiritChannelerPower extends Power {
         AllianceManager allies=AllianceManager.get(world.getServer());
         list.removeIf(s->{
             if(s.mob.isRemoved()||!s.mob.isAlive()||--s.ticks<=0){s.mob.discard();return true;}
-            if(s.ticks%10==0){
+            if(s.mob.getEntityWorld()!=world||s.mob.squaredDistanceTo(player)>40*40)
+                s.mob.teleport(world,player.getX(),player.getY(),player.getZ(),Set.of(),player.getYaw(),0,false);
+            if(s.ticks%5==0){
                 if(GraceManager.isActive(world.getServer())) { s.mob.setTarget(null); return false; }
-                LivingEntity target=null;double best=24*24;
-                Box box=s.mob.getBoundingBox().expand(24);
-                for(LivingEntity e:world.getEntitiesByClass(LivingEntity.class,box,x->x!=player&&x!=s.mob&&x.isAlive())){
-                    boolean ally=e instanceof ServerPlayerEntity p&&allies.isAlly(player,p);
-                    if(ally)continue;
-                    double d=s.mob.squaredDistanceTo(e);if(d<best){target=e;best=d;}
-                }
+                // Whoever hit the owner, then the owner's victim, then the nearest real threat; never the owner's own spirits/minions.
+                LivingEntity target=PowerCombatUtil.pickDefenseTarget(player,24.0);
                 s.mob.setTarget(target);
                 if(target==null&&s.mob.squaredDistanceTo(player)>100)s.mob.getNavigation().startMovingTo(player,1.1);
-                if(target==null)s.mob.setTarget(null);
-                if(s.ultimate&&s.ticks%5==0)world.spawnParticles(ParticleTypes.WITCH,s.mob.getX(),s.mob.getY()+.5,s.mob.getZ(),5,.3,.3,.3,.02);
+                if(s.ultimate)creepyShadow(world,player,s,allies);
             }
             return false;
         });
         if(list.isEmpty())summons.remove(id);
     }
+    /** The Restless Shadow is unsettling: a low heartbeat, whispers, drifting soul ink, and Darkness for nearby enemy players. */
+    private static void creepyShadow(ServerWorld world,ServerPlayerEntity owner,Summon s,AllianceManager allies){
+        YPConfig cfg=YPConfig.getInstance();
+        double x=s.mob.getX(),y=s.mob.getY()+.5,z=s.mob.getZ();
+        world.spawnParticles(ParticleTypes.SCULK_SOUL,x,y,z,2,.3,.4,.3,.01);
+        world.spawnParticles(ParticleTypes.SQUID_INK,x,y,z,3,.35,.4,.35,.01);
+        world.spawnParticles(ParticleTypes.WITCH,x,y,z,3,.3,.3,.3,.02);
+        if(s.ticks%40==0)world.playSound(null,s.mob.getBlockPos(),SoundEvents.ENTITY_WARDEN_HEARTBEAT,SoundCategory.HOSTILE,1.2f,.5f);
+        if(s.ticks%100==0)world.playSound(null,s.mob.getBlockPos(),SoundEvents.ENTITY_VEX_AMBIENT,SoundCategory.HOSTILE,1.0f,.5f);
+        if(s.ticks%160==0)world.playSound(null,s.mob.getBlockPos(),SoundEvents.ENTITY_WARDEN_NEARBY_CLOSE,SoundCategory.HOSTILE,1.0f,.6f);
+        if(s.ticks%10!=0)return;
+        double radius=Math.max(0.0,cfg.spirit_restless_shadows_darkness_radius);
+        if(radius<=0.0)return;
+        for(ServerPlayerEntity target:world.getEntitiesByClass(ServerPlayerEntity.class,s.mob.getBoundingBox().expand(radius),
+                p->p!=owner&&p.isAlive()&&!allies.isAlly(owner,p))){
+            if(target.squaredDistanceTo(s.mob)>radius*radius)continue;
+            target.addStatusEffect(new StatusEffectInstance(StatusEffects.DARKNESS,Math.max(20,cfg.spirit_restless_shadows_darkness_ticks),0,false,false));
+        }
+    }
+
     private static void decrement(Map<UUID,Integer> map,UUID id){int n=map.getOrDefault(id,0);if(n>0)map.put(id,n-1);}
     @Override public void onPlayerDeath(ServerPlayerEntity player){clear(player.getUuid());}
     @Override public void onRemove(ServerPlayerEntity player){clear(player.getUuid());}

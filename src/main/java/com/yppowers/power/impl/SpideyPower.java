@@ -7,6 +7,9 @@ import com.yppowers.power.Power;
 import com.yppowers.power.PowerType;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.item.ItemStack;
+import com.yppowers.item.YPItems;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.effect.StatusEffectInstance;
@@ -25,7 +28,9 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -41,8 +46,27 @@ public final class SpideyPower extends Power {
     private final Map<UUID, Boolean> mlgEnabled = new HashMap<>();
     private final Map<UUID, Integer> mlgProbeClock = new HashMap<>();
     private final Map<UUID, Integer> webLaunchBoost = new HashMap<>();
+    private final Map<UUID, Double> lastY = new HashMap<>();
+    private final Map<UUID, List<TempWeb>> tempWebs = new HashMap<>();
+
+    /** Cobweb placed by the automatic MLG; removed shortly after so landing spots are not littered. */
+    private static final class TempWeb { final ServerWorld world; final BlockPos pos; int ticks = 80;
+        TempWeb(ServerWorld world, BlockPos pos) { this.world = world; this.pos = pos; } }
 
     @Override public PowerType getType() { return PowerType.SPIDEY; }
+
+    @Override public void onAssign(ServerPlayerEntity player) { mlgEnabled.putIfAbsent(player.getUuid(), true); ensureWebSlingers(player); }
+    @Override public void onPlayerRespawn(ServerPlayerEntity player, ServerPlayerEntity oldPlayer) { ensureWebSlingers(player); }
+    @Override public boolean shouldPreventDrop(ServerPlayerEntity player, ItemStack stack) { return stack.isOf(YPItems.WEB_SLINGERS); }
+
+    private void ensureWebSlingers(ServerPlayerEntity player) {
+        for (int i = 0; i < player.getInventory().size(); i++) {
+            if (player.getInventory().getStack(i).isOf(YPItems.WEB_SLINGERS)) return;
+        }
+        ItemStack stack = new ItemStack(YPItems.WEB_SLINGERS);
+        stack.set(DataComponentTypes.CUSTOM_NAME, Text.literal("Web Slingers").formatted(Formatting.AQUA, Formatting.BOLD));
+        player.giveOrDropStack(stack);
+    }
 
     public int getDiveChain(UUID owner) { return diveChain.getOrDefault(owner, 0); }
 
@@ -79,8 +103,16 @@ public final class SpideyPower extends Power {
         if (tangent.lengthSquared() > 1.0e-5) tangent = tangent.normalize().multiply(velocity * 0.25);
         Vec3d impulse = towardAnchor.multiply(velocity).add(tangent);
         player.addVelocity(impulse.x, impulse.y + 0.12, impulse.z);
-        player.velocityDirty = true;
+        ((com.yppowers.mixin.EntityVelocityAccessor) (Object) player).invokeYppowersScheduleVelocityUpdate();
         webLaunchBoost.put(player.getUuid(), 40);
+        // Visible web line from the player to the anchor point.
+        Vec3d lineStart = player.getEyePos().add(0, -0.3, 0);
+        Vec3d line = hit.getPos().subtract(lineStart);
+        int lineSteps = (int) Math.max(1, Math.min(48, line.length() / 0.7));
+        for (int i = 1; i <= lineSteps; i++) {
+            Vec3d point = lineStart.add(line.multiply((double) i / lineSteps));
+            world.spawnParticles(ParticleTypes.END_ROD, point.x, point.y, point.z, 1, 0, 0, 0, 0);
+        }
         world.spawnParticles(ParticleTypes.WHITE_SMOKE, player.getEyePos().x, player.getEyePos().y, player.getEyePos().z, 12, .15, .15, .15, .02);
         world.spawnParticles(ParticleTypes.CRIT, anchor.x, anchor.y, anchor.z, 12, .2, .2, .2, .02);
         world.playSound(null, player.getBlockPos(), SoundEvents.ENTITY_FISHING_BOBBER_THROW, SoundCategory.PLAYERS, .8f, 1.5f);
@@ -92,6 +124,9 @@ public final class SpideyPower extends Power {
         if (cd > 0) { player.sendMessage(Text.literal("Web Grenade cooldown: " + ((cd+19)/20) + "s"), true); return; }
         Vec3d center = player.getEyePos().add(PowerCombatUtil.safeLook(player).multiply(8.0));
         double radius = Math.max(1, YPConfig.getInstance().spidey_web_grenade_radius);
+        EpicVfx.shockwave(world, center.x, center.y, center.z, Math.min(12.0, radius));
+        EpicVfx.sphereBurst(world, ParticleTypes.CLOUD, center.x, center.y, center.z, 40, 0.3);
+        EpicVfx.sphereBurst(world, ParticleTypes.END_ROD, center.x, center.y, center.z, 24, 0.2);
         AllianceManager allies = AllianceManager.get(world.getServer());
         Box area = new Box(center.x-radius, center.y-radius, center.z-radius, center.x+radius, center.y+radius, center.z+radius);
         int duration = Math.max(1, YPConfig.getInstance().spidey_web_grenade_duration_ticks);
@@ -125,6 +160,10 @@ public final class SpideyPower extends Power {
         player.addStatusEffect(new StatusEffectInstance(StatusEffects.STRENGTH, duration, 1, false, true));
         player.sendMessage(Text.literal("RAGE MODE — web launch and melee power increased!").formatted(Formatting.RED, Formatting.BOLD), true);
         player.getEntityWorld().playSound(null, player.getBlockPos(), SoundEvents.ENTITY_WARDEN_HEARTBEAT, SoundCategory.PLAYERS, .8f, 1.4f);
+        if (player.getEntityWorld() instanceof ServerWorld rageWorld) {
+            EpicVfx.shockwave(rageWorld, player.getX(), player.getY(), player.getZ(), 6.0);
+            EpicVfx.activation(rageWorld, player.getX(), player.getY(), player.getZ(), 1.2);
+        }
     }
 
     private void spiderDive(ServerPlayerEntity player) {
@@ -135,7 +174,7 @@ public final class SpideyPower extends Power {
         if (chain == 0) {
             Vec3d look = PowerCombatUtil.safeLook(player);
             player.setVelocity(-look.x*.45, 1.05, -look.z*.45);
-            player.velocityDirty = true;
+            ((com.yppowers.mixin.EntityVelocityAccessor) (Object) player).invokeYppowersScheduleVelocityUpdate();
             diveChain.put(id, 1);
             diveWindow.put(id, Math.max(1, YPConfig.getInstance().spidey_dive_chain_window_ticks));
             world.spawnParticles(ParticleTypes.CLOUD, player.getX(), player.getY(), player.getZ(), 18, .4, .2, .4, .03);
@@ -146,7 +185,7 @@ public final class SpideyPower extends Power {
         LivingEntity target = findLookTarget(player, 20.0);
         if (target == null || !PowerCombatUtil.canHarm(player, target)) {
             player.setVelocity(player.getRotationVec(1).multiply(0.8).add(0, .2, 0));
-            player.velocityDirty = true;
+            ((com.yppowers.mixin.EntityVelocityAccessor) (Object) player).invokeYppowersScheduleVelocityUpdate();
             diveChain.remove(id); diveWindow.remove(id);
             diveCooldowns.put(id, Math.max(0, YPConfig.getInstance().spidey_dive_cooldown_ticks));
             player.sendMessage(Text.literal("Spider Dive missed; sequence ended."), true); return;
@@ -157,7 +196,7 @@ public final class SpideyPower extends Power {
         target.damage(world, world.getDamageSources().playerAttack(player), (float)Math.max(0, damage));
         Vec3d dir = target.getEntityPos().subtract(player.getEntityPos()).normalize();
         target.addVelocity(dir.x*0.6, finisher ? 0.9 : 0.35, dir.z*0.6);
-        target.velocityDirty = true;
+        ((com.yppowers.mixin.EntityVelocityAccessor) (Object) target).invokeYppowersScheduleVelocityUpdate();
         world.spawnParticles(finisher ? ParticleTypes.EXPLOSION : ParticleTypes.CRIT, target.getX(), target.getBodyY(.5), target.getZ(), finisher ? 2 : 10, .3,.2,.3,.02);
         if (finisher) EpicVfx.impact(world, target.getX(), target.getBodyY(.5), target.getZ(), 1.0);
         if (finisher) {
@@ -166,7 +205,7 @@ public final class SpideyPower extends Power {
         } else {
             diveChain.put(id, chain+1);
             diveWindow.put(id, Math.max(1, YPConfig.getInstance().spidey_dive_chain_window_ticks));
-            player.setVelocity(0, 0.9, 0); player.velocityDirty = true;
+            player.setVelocity(0, 0.9, 0); ((com.yppowers.mixin.EntityVelocityAccessor) (Object) player).invokeYppowersScheduleVelocityUpdate();
         }
     }
 
@@ -214,42 +253,62 @@ public final class SpideyPower extends Power {
         int window = diveWindow.getOrDefault(id, 0);
         if (window > 0) { window--; if (window == 0) { diveWindow.remove(id); diveChain.remove(id); } else diveWindow.put(id, window); }
         if (!(player.getEntityWorld() instanceof ServerWorld world) || player.getEntityWorld().getServer() == null) return;
-        int probe = mlgProbeClock.getOrDefault(id, 0) + 1;
-        if (probe >= 3) { probe = 0; tryAutomaticMlg(player, world); }
-        mlgProbeClock.put(id, probe);
+        tickTempWebs(id);
+        // Checked every server tick: players can cross the whole landing window in two or three ticks.
+        tryAutomaticMlg(player, world);
+    }
+
+    private void tickTempWebs(UUID id) {
+        List<TempWeb> webs = tempWebs.get(id);
+        if (webs == null) return;
+        webs.removeIf(w -> {
+            if (--w.ticks > 0) return false;
+            if (w.world.getBlockState(w.pos).isOf(Blocks.COBWEB)) w.world.setBlockState(w.pos, Blocks.AIR.getDefaultState());
+            return true;
+        });
+        if (webs.isEmpty()) tempWebs.remove(id);
     }
 
     private void tryAutomaticMlg(ServerPlayerEntity player, ServerWorld world) {
         UUID id = player.getUuid();
+        // The server does not track a client-driven player's velocity, so measure the real fall speed from Y.
+        double previousY = lastY.getOrDefault(id, player.getY());
+        double fallSpeed = previousY - player.getY();
+        lastY.put(id, player.getY());
         if (!mlgEnabled.getOrDefault(id, true) || GraceManager.isActive(world.getServer())
-                || player.isOnGround() || player.getVelocity().y >= -0.55
+                || player.isOnGround() || player.isCreative() || player.isSpectator()
+                || fallSpeed < 0.4
                 || player.fallDistance < Math.max(1, YPConfig.getInstance().spidey_mlg_fall_threshold)
-                || mlgCooldowns.getOrDefault(id,0) > 0) return;
-        int radius = Math.max(0, YPConfig.getInstance().spidey_mlg_search_radius);
-        BlockPos base = BlockPos.ofFloored(player.getX(), player.getY()-1.0, player.getZ());
-        BlockPos chosen = null;
-        for (int dx=-radius; dx<=radius && chosen==null; dx++) for (int dz=-radius; dz<=radius && chosen==null; dz++) {
-            BlockPos pos = base.add(dx,0,dz);
-            BlockState existing = world.getBlockState(pos);
-            if (!existing.isAir() || !world.getBlockState(pos.up()).isAir()) continue;
-            if (world.getBlockState(pos.down()).isAir()) continue;
-            chosen = pos;
-        }
-        if (chosen == null) return;
-        if (world.setBlockState(chosen, Blocks.COBWEB.getDefaultState())) {
-            mlgCooldowns.put(id, Math.max(1, YPConfig.getInstance().spidey_mlg_cooldown_ticks));
-            player.fallDistance = 0;
-            world.spawnParticles(ParticleTypes.CLOUD, chosen.getX()+.5, chosen.getY()+.5, chosen.getZ()+.5, 12,.2,.2,.2,.02);
-            world.playSound(null, chosen, SoundEvents.BLOCK_WOOL_PLACE, SoundCategory.PLAYERS, .8f, 1.6f);
+                || mlgCooldowns.getOrDefault(id, 0) > 0) return;
+        int reach = (int) Math.max(4, Math.min(14, Math.ceil(fallSpeed * 3.0) + 2));
+        BlockPos feet = player.getBlockPos();
+        for (int dy = 0; dy <= reach; dy++) {
+            BlockPos pos = feet.down(dy);
+            BlockState state = world.getBlockState(pos);
+            if (state.isOf(Blocks.COBWEB)) return;                 // already protected
+            if (!state.getFluidState().isEmpty()) return;           // water/lava below: no cobweb
+            if (state.isAir() || state.getCollisionShape(world, pos).isEmpty()) continue;
+            if (dy == 0) return;
+            BlockPos webPos = pos.up();
+            if (!world.getBlockState(webPos).isAir()) return;
+            if (world.setBlockState(webPos, Blocks.COBWEB.getDefaultState())) {
+                tempWebs.computeIfAbsent(id, ignored -> new ArrayList<>()).add(new TempWeb(world, webPos));
+                mlgCooldowns.put(id, Math.max(1, YPConfig.getInstance().spidey_mlg_cooldown_ticks));
+                world.spawnParticles(ParticleTypes.CLOUD, webPos.getX()+.5, webPos.getY()+.5, webPos.getZ()+.5, 12,.2,.2,.2,.02);
+                world.playSound(null, webPos, SoundEvents.BLOCK_WOOL_PLACE, SoundCategory.PLAYERS, .8f, 1.6f);
+            }
+            return;
         }
     }
 
     private static void decrement(Map<UUID,Integer> map, UUID id) { int v=map.getOrDefault(id,0); if(v>0)map.put(id,v-1); }
     @Override public void onPlayerDeath(ServerPlayerEntity player) { clearTransient(player.getUuid()); }
     @Override public void onRemove(ServerPlayerEntity player) { clearTransient(player.getUuid()); }
-    @Override public void onPlayerJoin(ServerPlayerEntity player) { mlgEnabled.putIfAbsent(player.getUuid(), true); }
+    @Override public void onPlayerJoin(ServerPlayerEntity player) { mlgEnabled.putIfAbsent(player.getUuid(), true); ensureWebSlingers(player); }
     private void clearTransient(UUID id) {
-        rageTicks.remove(id); diveChain.remove(id); diveWindow.remove(id); mlgProbeClock.remove(id); webLaunchBoost.remove(id);
+        rageTicks.remove(id); diveChain.remove(id); diveWindow.remove(id); mlgProbeClock.remove(id); webLaunchBoost.remove(id); lastY.remove(id);
+        List<TempWeb> webs = tempWebs.remove(id);
+        if (webs != null) for (TempWeb w : webs) if (w.world.getBlockState(w.pos).isOf(Blocks.COBWEB)) w.world.setBlockState(w.pos, Blocks.AIR.getDefaultState());
         rageCooldowns.remove(id); diveCooldowns.remove(id); grenadeCooldowns.remove(id); mlgCooldowns.remove(id);
     }
 }

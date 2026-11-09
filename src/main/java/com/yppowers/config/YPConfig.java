@@ -255,6 +255,11 @@ public class YPConfig {
     public double spirit_restless_shadows_energy_cost = 75.0;
     public double spirit_restless_shadows_radius = 12.0;
     public double spirit_restless_shadows_damage = 6.0;
+    /** Maximum health of the Restless Shadow. */
+    public double spirit_restless_shadows_health = 40.0;
+    /** Enemy players within this many blocks of the Restless Shadow are plunged into Darkness. */
+    public double spirit_restless_shadows_darkness_radius = 16.0;
+    public int spirit_restless_shadows_darkness_ticks = 100;
 
     // Illusionist.
     public int illusionist_spatial_erasure_cooldown_ticks = 300;
@@ -271,6 +276,20 @@ public class YPConfig {
     public int illusionist_celestial_pull_duration_ticks = 80;
     public double illusionist_celestial_pull_damage = 20.0;
     public double illusionist_celestial_pull_energy_cost = 60.0;
+    /** Radius of the hovering moon in blocks (it is a hollow shell of blocks, so cost grows with the square of this). */
+    public double illusionist_celestial_moon_radius = 5.0;
+    /** How high above the target the moon hovers. */
+    public double illusionist_celestial_moon_height = 22.0;
+    /** Multiplier applied to the moon radius (effective radius is capped at 14 blocks). */
+    public double illusionist_celestial_moon_scale = 1.6;
+    /** Upper limit on moon block entities; larger moons are thinned evenly so the server and clients stay smooth. */
+    public int illusionist_celestial_moon_max_blocks = 480;
+    /** Everything non-allied within this radius is weightless while the skill is active. */
+    public double illusionist_celestial_weightless_radius = 48.0;
+    /** Horizontal radius of the crater blast and of the gravity well that captures mobs. */
+    public double illusionist_celestial_crater_radius = 16.0;
+    /** Damage dealt to captured mobs by the crater blast (the larger of this and illusionist_celestial_pull_damage is used). */
+    public double illusionist_celestial_crater_damage = 45.0;
 
     // Kitsune.
     public int kitsune_foxfire_duration_ticks = 80;
@@ -278,6 +297,8 @@ public class YPConfig {
     public int kitsune_transformation_duration_ticks = 600;
     public int kitsune_transformation_cooldown_ticks = 2400;
     public double kitsune_transformation_speed_multiplier = 3.0;
+    /** While transformed, right-clicking with a block in hand places it on the surface the fox is looking at, up to this far. */
+    public double kitsune_fox_place_range = 16.0;
     public double kitsune_claw_energy_cost = 10.0;
     public double kitsune_claw_damage = 8.0;
     public double kitsune_claw_range = 4.0;
@@ -418,6 +439,14 @@ public class YPConfig {
     public boolean time_warper_black_hole_affect_players = true;
     public boolean time_warper_black_hole_affect_mobs = true;
     public boolean time_warper_black_hole_affect_items = true;
+    /** Items that must be absorbed for the Black Hole to reach its maximum final-explosion power. */
+    public double time_warper_black_hole_items_for_max_power = 256.0;
+    /** Final-explosion radius/damage multiplier reached at the maximum absorbed item count. */
+    public double time_warper_black_hole_max_power_multiplier = 3.0;
+    /** How many items each destroyed block counts as toward the charge (0 disables block counting). */
+    public double time_warper_black_hole_block_item_value = 0.02;
+    /** Upper limit on the extra damage dealt by the charged final explosion. */
+    public double time_warper_black_hole_max_blast_damage = 24.0;
     public int time_warper_black_hole_max_blocks_per_tick = 64;
 
     // Boots of the Sky: Raigo ultimate.
@@ -483,6 +512,20 @@ public class YPConfig {
         time_warper_black_hole_health_sacrifice_percent = clamp(time_warper_black_hole_health_sacrifice_percent, 0.0, 0.95, 0.5);
         time_warper_black_hole_energy_cost = clamp(time_warper_black_hole_energy_cost, 0.0, 100000.0, 80.0);
         time_warper_black_hole_max_blocks_per_tick = clamp(time_warper_black_hole_max_blocks_per_tick, 0, 512, 64);
+        spirit_restless_shadows_health = clamp(spirit_restless_shadows_health, 1.0, 1024.0, 40.0);
+        spirit_restless_shadows_darkness_radius = clamp(spirit_restless_shadows_darkness_radius, 0.0, 48.0, 16.0);
+        spirit_restless_shadows_darkness_ticks = (int) clamp(spirit_restless_shadows_darkness_ticks, 20, 600, 100);
+        illusionist_celestial_moon_radius = clamp(illusionist_celestial_moon_radius, 2.0, 10.0, 5.0);
+        illusionist_celestial_moon_scale = clamp(illusionist_celestial_moon_scale, 0.5, 3.0, 1.6);
+        illusionist_celestial_moon_max_blocks = (int) clamp(illusionist_celestial_moon_max_blocks, 100, 1500, 480);
+        illusionist_celestial_moon_height = clamp(illusionist_celestial_moon_height, 10.0, 60.0, 22.0);
+        illusionist_celestial_weightless_radius = clamp(illusionist_celestial_weightless_radius, 8.0, 128.0, 48.0);
+        illusionist_celestial_crater_radius = clamp(illusionist_celestial_crater_radius, 4.0, 40.0, 16.0);
+        illusionist_celestial_crater_damage = clamp(illusionist_celestial_crater_damage, 0.0, 500.0, 45.0);
+        time_warper_black_hole_items_for_max_power = clamp(time_warper_black_hole_items_for_max_power, 1.0, 100000.0, 256.0);
+        time_warper_black_hole_max_power_multiplier = clamp(time_warper_black_hole_max_power_multiplier, 1.0, 6.0, 3.0);
+        time_warper_black_hole_block_item_value = clamp(time_warper_black_hole_block_item_value, 0.0, 10.0, 0.02);
+        time_warper_black_hole_max_blast_damage = clamp(time_warper_black_hole_max_blast_damage, 0.0, 200.0, 24.0);
         boots_raigo_charge_ticks = clamp(boots_raigo_charge_ticks, 1, 1200, 60);
         boots_raigo_range = clamp(boots_raigo_range, 1.0, 256.0, 80.0);
         boots_raigo_radius = clamp(boots_raigo_radius, 1.0, 128.0, 20.0);
