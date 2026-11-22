@@ -1,12 +1,15 @@
 package com.yppowers.mixin.client;
 
 import com.yppowers.client.render.TimeCloneRenderStateAccess;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
 import net.minecraft.client.render.entity.state.ZombieEntityRenderState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
 import java.util.UUID;
 
+@Environment(EnvType.CLIENT)
 @Mixin(ZombieEntityRenderState.class)
 public abstract class TimeCloneRenderStateMixin implements TimeCloneRenderStateAccess {
     @Unique private UUID yppowers$cloneOwner;

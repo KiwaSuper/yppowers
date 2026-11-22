@@ -1,6 +1,7 @@
 package com.yppowers.mixin.client;
 
-import com.yppowers.client.ClientPowerData;
+import com.yppowers.client.ClientState;
+import com.yppowers.core.PowerId;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.block.enums.CameraSubmersionType;
@@ -18,7 +19,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.nio.ByteBuffer;
 
-/** Extends lava fog for Fire God using the 1.21.11 fog-buffer API. */
+/** Clear lava vision for Fire God. */
 @Environment(EnvType.CLIENT)
 @Mixin(FogRenderer.class)
 public abstract class BackgroundRendererMixin {
@@ -29,10 +30,9 @@ public abstract class BackgroundRendererMixin {
             method = "applyFog(Lnet/minecraft/client/render/Camera;ILnet/minecraft/client/render/RenderTickCounter;FLnet/minecraft/client/world/ClientWorld;)Lorg/joml/Vector4f;",
             at = @At("HEAD")
     )
-    private void yppowers$trackLavaFog(Camera camera, int viewDistance, RenderTickCounter renderTickCounter,
-                                       float tickDelta, ClientWorld world,
-                                       CallbackInfoReturnable<Vector4f> cir) {
-        yppowers$extendLavaFog = ClientPowerData.hasFireGodPower
+    private void yppowers$trackLavaFog(Camera camera, int viewDistance, RenderTickCounter tickCounter,
+                                       float tickDelta, ClientWorld world, CallbackInfoReturnable<Vector4f> cir) {
+        yppowers$extendLavaFog = ClientState.hasPower(PowerId.FIRE_GOD)
                 && camera.getSubmersionType() == CameraSubmersionType.LAVA;
     }
 
@@ -40,15 +40,15 @@ public abstract class BackgroundRendererMixin {
             method = "applyFog(Ljava/nio/ByteBuffer;ILorg/joml/Vector4f;FFFFFF)V",
             at = @At("HEAD"), argsOnly = true, ordinal = 0
     )
-    private float yppowers$extendLavaFogStart(float environmentalStart) {
-        return yppowers$extendLavaFog ? 0.0f : environmentalStart;
+    private float yppowers$lavaStart(float start) {
+        return yppowers$extendLavaFog ? 0.0f : start;
     }
 
     @ModifyVariable(
             method = "applyFog(Ljava/nio/ByteBuffer;ILorg/joml/Vector4f;FFFFFF)V",
             at = @At("HEAD"), argsOnly = true, ordinal = 1
     )
-    private float yppowers$extendLavaFogEnd(float environmentalEnd) {
-        return yppowers$extendLavaFog ? 192.0f : environmentalEnd;
+    private float yppowers$lavaEnd(float end) {
+        return yppowers$extendLavaFog ? 192.0f : end;
     }
 }

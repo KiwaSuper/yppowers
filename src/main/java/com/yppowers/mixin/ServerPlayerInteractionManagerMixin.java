@@ -1,7 +1,6 @@
 package com.yppowers.mixin;
 
-import com.yppowers.power.impl.ThorPower;
-import com.yppowers.power.impl.TeleportGambitDomainManager;
+import com.yppowers.system.TempBlockSystem;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.network.ServerPlayerInteractionManager;
 import net.minecraft.server.world.ServerWorld;
@@ -18,15 +17,9 @@ public abstract class ServerPlayerInteractionManagerMixin {
     @Shadow @Final protected ServerPlayerEntity player;
 
     @Inject(method = "tryBreakBlock", at = @At("HEAD"), cancellable = true)
-    private void yppowers$protectThorHeavyCore(BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
+    private void yppowers$protectTemporaryBlocks(BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
         if (player.getEntityWorld() instanceof ServerWorld world
-                && TeleportGambitDomainManager.isProtectedChargeFrame(world, pos)) {
-            cir.setReturnValue(false);
-            return;
-        }
-        if (player.getEntityWorld() instanceof ServerWorld world
-                && ThorPower.isProtectedHeavyCore(world, pos)) {
-            // Cancel before vanilla break logic, including for Creative-mode players.
+                && TempBlockSystem.isPlayerBreakBlocked(world, pos)) {
             cir.setReturnValue(false);
         }
     }

@@ -1,8 +1,11 @@
 package com.yppowers.client.render;
 
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+
 import java.util.UUID;
 
-/** Client render-state metadata for a Time Warper clone. */
+@Environment(EnvType.CLIENT)
 public interface TimeCloneRenderStateAccess {
     UUID yppowers$getCloneOwner();
     boolean yppowers$isGoldenClone();

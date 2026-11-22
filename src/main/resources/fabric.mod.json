@@ -3,7 +3,7 @@
   "id": "yppowers",
   "version": "${version}",
   "name": "YP Powers",
-  "description": "12 unique combat powers with keybindings, alliances, and full configuration.",
+  "description": "17 unique combat powers with shared Energy, alliances, grace periods, pocket domain, mob morphs, HUD, and full JSON configuration.",
   "authors": [
     "YP"
   ],
@@ -24,7 +24,7 @@
   "depends": {
     "fabricloader": ">=0.18.1",
     "minecraft": "~1.21.11",
-    "java": ">=21",
+    "java": ">=25",
     "fabric-api": "*"
   }
 }

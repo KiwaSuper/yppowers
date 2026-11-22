@@ -1,6 +1,6 @@
 package com.yppowers.mixin.client;
 
-import com.yppowers.client.ClientPowerData;
+import com.yppowers.client.ClientState;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.MinecraftClient;
@@ -11,16 +11,14 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Makes the local player's view originate at the active Shadow Archer form's eye height. */
 @Environment(EnvType.CLIENT)
 @Mixin(Entity.class)
 public abstract class ShadowArcherCameraMixin {
     @Inject(method = "getEyeHeight", at = @At("RETURN"), cancellable = true)
-    private void yppowers$useMorphEyeHeight(EntityPose pose, CallbackInfoReturnable<Float> cir) {
+    private void yppowers$morphEyeHeight(EntityPose pose, CallbackInfoReturnable<Float> cir) {
         MinecraftClient client = MinecraftClient.getInstance();
-        if ((Object) this == client.player && ClientPowerData.shadowArcherMorphed) {
-            // Clamped so giants are not unreachable-high and tiny forms do not sit inside the floor.
-            cir.setReturnValue(Math.max(0.45F, Math.min(2.6F, ClientPowerData.shadowArcherMorphEyeHeight)));
+        if ((Object) this == client.player && ClientState.shadowArcherMorphed) {
+            cir.setReturnValue(Math.max(0.45f, Math.min(2.6f, ClientState.shadowArcherMorphEyeHeight)));
         }
     }
 }

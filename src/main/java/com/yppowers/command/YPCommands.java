@@ -1,233 +1,305 @@
 package com.yppowers.command;
 
 import com.mojang.brigadier.CommandDispatcher;
-import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
-import com.yppowers.alliance.AllianceManager;
-import com.yppowers.power.PowerManager;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.yppowers.config.YPConfig;
-import com.yppowers.energy.EnergyManager;
-import com.yppowers.energy.GlobalHealthManager;
-import com.yppowers.power.PowerType;
+import com.yppowers.core.PlayerDataStore;
+import com.yppowers.core.PowerId;
+import com.yppowers.item.YPItems;
+import com.yppowers.network.YPNetworking;
+import com.yppowers.system.AllianceSystem;
+import com.yppowers.system.CooldownSystem;
+import com.yppowers.system.EnergySystem;
+import com.yppowers.system.GlobalHealthSystem;
+import com.yppowers.system.GraceSystem;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.command.CommandRegistryAccess;
 import net.minecraft.command.argument.EntityArgumentType;
 import net.minecraft.command.permission.Permission;
 import net.minecraft.command.permission.PermissionLevel;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.item.ItemStack;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-public class YPCommands {
+/** Server commands for powers, alliances, grace, energy, health, cooldowns, and config reload. */
+public final class YPCommands {
+    private YPCommands() {}
+
     public static void register() {
         CommandRegistrationCallback.EVENT.register(YPCommands::registerCommands);
     }
 
-    private static void registerCommands(CommandDispatcher<ServerCommandSource> dispatcher, CommandRegistryAccess registryAccess, CommandManager.RegistrationEnvironment environment) {
-        dispatcher.register(CommandManager.literal("grace")
-            .requires(source -> source.getPermissions().hasPermission(new Permission.Level(PermissionLevel.GAMEMASTERS)))
-            .then(CommandManager.argument("minutes", IntegerArgumentType.integer(0, Integer.MAX_VALUE / 1200))
-                .executes(context -> {
-                    int minutes = IntegerArgumentType.getInteger(context, "minutes");
-                    PowerManager manager = PowerManager.get(context.getSource().getServer());
-                    if (minutes == 0) {
-                        boolean wasActive = manager.isGracePeriodActive();
-                        manager.setGraceTicksRemaining(0);
-                        if (wasActive) {
-                            context.getSource().getServer().getPlayerManager().broadcast(
-                                    Text.literal("Grace period ended by an administrator. Abilities and PvP are enabled again.")
-                                            .formatted(Formatting.GREEN), false);
-                        }
-                        context.getSource().sendFeedback(() -> Text.literal(wasActive
-                                ? "Grace period disabled." : "No grace period was active."), true);
-                        return 1;
-                    }
+    private static boolean isOp(ServerCommandSource source) {
+        return source.getPermissions().hasPermission(new Permission.Level(PermissionLevel.GAMEMASTERS));
+    }
 
-                    int ticks = Math.multiplyExact(minutes, 1200);
-                    manager.setGraceTicksRemaining(ticks);
-                    context.getSource().getServer().getPlayerManager().broadcast(
-                            Text.literal("Grace period started for " + minutes
-                                    + (minutes == 1 ? " minute. Abilities and PvP are disabled." : " minutes. Abilities and PvP are disabled."))
-                                    .formatted(Formatting.GOLD), false);
-                    context.getSource().sendFeedback(() -> Text.literal("Grace period set to " + minutes + " minute(s)."), true);
-                    return 1;
-                })
-            )
+    private static void registerCommands(CommandDispatcher<ServerCommandSource> dispatcher,
+                                         CommandRegistryAccess registryAccess,
+                                         CommandManager.RegistrationEnvironment environment) {
+        dispatcher.register(CommandManager.literal("grace")
+                .requires(YPCommands::isOp)
+                .then(CommandManager.argument("minutes", IntegerArgumentType.integer(0, Integer.MAX_VALUE / 1200))
+                        .executes(ctx -> {
+                            int minutes = IntegerArgumentType.getInteger(ctx, "minutes");
+                            MinecraftServer server = ctx.getSource().getServer();
+                            GraceSystem grace = GraceSystem.get(server);
+                            if (minutes == 0) {
+                                boolean wasActive = grace.getTicksRemaining() > 0;
+                                grace.setTicksRemaining(0);
+                                if (wasActive) {
+                                    server.getPlayerManager().broadcast(
+                                            Text.literal("Grace period ended by an administrator. Abilities and PvP are enabled again.")
+                                                    .formatted(Formatting.GREEN), false);
+                                }
+                                ctx.getSource().sendFeedback(() -> Text.literal(wasActive
+                                        ? "Grace period disabled." : "No grace period was active."), true);
+                                return 1;
+                            }
+                            grace.setTicksRemaining(Math.multiplyExact(minutes, 1200));
+                            server.getPlayerManager().broadcast(
+                                    Text.literal("Grace period started for " + minutes
+                                            + (minutes == 1 ? " minute" : " minutes")
+                                            + ". Abilities and PvP are disabled.").formatted(Formatting.GOLD), false);
+                            ctx.getSource().sendFeedback(() -> Text.literal("Grace period set to " + minutes + " minute(s)."), true);
+                            return 1;
+                        })
+                )
         );
 
         dispatcher.register(CommandManager.literal("yp")
-            .then(CommandManager.literal("power")
-                .requires(source -> source.getPermissions().hasPermission(new Permission.Level(PermissionLevel.GAMEMASTERS)))
-                .then(CommandManager.literal("assign")
-                    .then(CommandManager.argument("player", EntityArgumentType.player())
-                        .then(CommandManager.argument("power", StringArgumentType.word())
-                            .suggests((context, builder) -> {
-                                for (PowerType type : PowerType.values()) {
-                                    builder.suggest(type.getId());
-                                }
-                                return builder.buildFuture();
-                            })
-                            .executes(context -> {
-                                ServerPlayerEntity target = EntityArgumentType.getPlayer(context, "player");
-                                String powerId = StringArgumentType.getString(context, "power");
-                                PowerType type = PowerType.fromId(powerId);
-                                
-                                if (type == null) {
-                                    context.getSource().sendError(Text.literal("Unknown power: " + powerId).formatted(Formatting.RED));
-                                    return 0;
-                                }
-                                
-                                PowerManager.get(context.getSource().getServer()).assignPower(target, type);
-                                context.getSource().sendFeedback(() -> Text.literal("Assigned power " + type.getDisplayName() + " to " + target.getName().getString()).formatted(Formatting.GREEN), true);
-                                return 1;
-                            })
+                .then(CommandManager.literal("power")
+                        .requires(YPCommands::isOp)
+                        .then(CommandManager.literal("assign")
+                                .then(CommandManager.argument("player", EntityArgumentType.player())
+                                        .then(CommandManager.argument("power", StringArgumentType.word())
+                                                .suggests((ctx, builder) -> {
+                                                    for (PowerId id : PowerId.values()) builder.suggest(id.id());
+                                                    return builder.buildFuture();
+                                                })
+                                                .executes(ctx -> {
+                                                    ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+                                                    String raw = StringArgumentType.getString(ctx, "power");
+                                                    PowerId id = PowerId.fromId(raw);
+                                                    if (id == null) {
+                                                        ctx.getSource().sendError(Text.literal("Unknown power: " + raw).formatted(Formatting.RED));
+                                                        return 0;
+                                                    }
+                                                    PlayerDataStore.get(ctx.getSource().getServer()).assignPower(target, id);
+                                                    ctx.getSource().sendFeedback(() -> Text.literal("Assigned " + id.displayName()
+                                                            + " to " + target.getName().getString()).formatted(Formatting.GREEN), true);
+                                                    return 1;
+                                                })
+                                        )
+                                )
                         )
-                    )
-                )
-                .then(CommandManager.literal("clear")
-                    .then(CommandManager.argument("player", EntityArgumentType.player())
-                        .executes(context -> {
-                            ServerPlayerEntity target = EntityArgumentType.getPlayer(context, "player");
-                            PowerManager.get(context.getSource().getServer()).clearPower(target);
-                            context.getSource().sendFeedback(() -> Text.literal("Cleared power for " + target.getName().getString()).formatted(Formatting.GREEN), true);
-                            return 1;
-                        })
-                    )
-                )
-                .then(CommandManager.literal("check")
-                    .executes(context -> {
-                        ServerPlayerEntity target = context.getSource().getPlayerOrThrow();
-                        PowerType type = PowerManager.get(context.getSource().getServer()).getPowerType(target.getUuid());
-                        String powerName = type != null ? type.getDisplayName() : "None";
-                        context.getSource().sendFeedback(() -> Text.literal(target.getName().getString() + "'s Power: " + powerName).formatted(Formatting.YELLOW), false);
-                        return 1;
-                    })
-                    .then(CommandManager.argument("player", EntityArgumentType.player())
-                        .executes(context -> {
-                            ServerPlayerEntity target = EntityArgumentType.getPlayer(context, "player");
-                            PowerType type = PowerManager.get(context.getSource().getServer()).getPowerType(target.getUuid());
-                            String powerName = type != null ? type.getDisplayName() : "None";
-                            context.getSource().sendFeedback(() -> Text.literal(target.getName().getString() + "'s Power: " + powerName).formatted(Formatting.YELLOW), false);
-                            return 1;
-                        })
-                    )
-                )
-            )
-            .then(CommandManager.literal("health")
-                .requires(source -> source.getPermissions().hasPermission(new Permission.Level(PermissionLevel.GAMEMASTERS)))
-                .then(CommandManager.literal("enable").executes(context -> {
-                    YPConfig config = YPConfig.getInstance();
-                    config.global_health_enabled = true;
-                    config.save();
-                    GlobalHealthManager.applyAll(context.getSource().getServer());
-                    context.getSource().sendFeedback(() -> Text.literal("Global player health enabled (target "
-                            + config.global_player_health_value + " HP). Mobs are unchanged.").formatted(Formatting.GREEN), true);
-                    return 1;
-                }))
-                .then(CommandManager.literal("disable").executes(context -> {
-                    YPConfig config = YPConfig.getInstance();
-                    config.global_health_enabled = false;
-                    config.save();
-                    GlobalHealthManager.applyAll(context.getSource().getServer());
-                    context.getSource().sendFeedback(() -> Text.literal("Global player health disabled. Mobs are unchanged.").formatted(Formatting.YELLOW), true);
-                    return 1;
-                }))
-                .then(CommandManager.literal("status").executes(context -> {
-                    YPConfig config = YPConfig.getInstance();
-                    context.getSource().sendFeedback(() -> Text.literal("Global player health: "
-                            + (config.global_health_enabled ? "enabled, " + config.global_player_health_value + " HP" : "disabled")
-                            + " (mobs unchanged).").formatted(Formatting.YELLOW), false);
-                    return 1;
-                }))
-            )
-            .then(CommandManager.literal("energy")
-                .requires(source -> source.getPermissions().hasPermission(new Permission.Level(PermissionLevel.GAMEMASTERS)))
-                .then(CommandManager.argument("player", EntityArgumentType.player())
-                    .then(CommandManager.literal("set")
-                        .then(CommandManager.argument("amount", com.mojang.brigadier.arguments.DoubleArgumentType.doubleArg(0.0, 100000.0))
-                            .executes(context -> {
-                                ServerPlayerEntity target = EntityArgumentType.getPlayer(context, "player");
-                                double amount = com.mojang.brigadier.arguments.DoubleArgumentType.getDouble(context, "amount");
-                                EnergyManager.get(context.getSource().getServer()).setEnergy(target.getUuid(), amount);
-                                EnergyManager.get(context.getSource().getServer()).sync(target);
-                                context.getSource().sendFeedback(() -> Text.literal("Set " + target.getName().getString()
-                                        + " Energy to " + amount + ".").formatted(Formatting.GREEN), true);
-                                return 1;
-                            })
+                        .then(CommandManager.literal("clear")
+                                .then(CommandManager.argument("player", EntityArgumentType.player())
+                                        .executes(ctx -> {
+                                            ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+                                            PlayerDataStore.get(ctx.getSource().getServer()).clearPower(target);
+                                            ctx.getSource().sendFeedback(() -> Text.literal("Cleared power for "
+                                                    + target.getName().getString()).formatted(Formatting.GREEN), true);
+                                            return 1;
+                                        })
+                                )
                         )
-                    )
+                        .then(CommandManager.literal("check")
+                                .executes(ctx -> {
+                                    ServerPlayerEntity target = ctx.getSource().getPlayerOrThrow();
+                                    return reportPower(ctx.getSource(), target);
+                                })
+                                .then(CommandManager.argument("player", EntityArgumentType.player())
+                                        .executes(ctx -> reportPower(ctx.getSource(), EntityArgumentType.getPlayer(ctx, "player")))
+                                )
+                        )
+                        .then(CommandManager.literal("list")
+                                .executes(ctx -> {
+                                    List<String> names = new ArrayList<>();
+                                    for (PowerId id : PowerId.values()) names.add(id.id() + " (" + id.displayName() + ")");
+                                    ctx.getSource().sendFeedback(() -> Text.literal("Available powers (" + names.size() + "): "
+                                            + String.join(", ", names)).formatted(Formatting.AQUA), false);
+                                    return 1;
+                                })
+                        )
                 )
-            )
-            .then(CommandManager.literal("alliance")
-                .then(CommandManager.literal("add")
-                    .then(CommandManager.argument("player", EntityArgumentType.player())
-                        .executes(context -> {
-                            ServerPlayerEntity sourcePlayer = context.getSource().getPlayerOrThrow();
-                            ServerPlayerEntity target = EntityArgumentType.getPlayer(context, "player");
-                            if (sourcePlayer == target) {
-                                context.getSource().sendError(Text.literal("Cannot ally with yourself!").formatted(Formatting.RED));
-                                return 0;
+                .then(CommandManager.literal("alliance")
+                        .then(CommandManager.literal("add")
+                                .then(CommandManager.argument("player", EntityArgumentType.player())
+                                        .executes(ctx -> {
+                                            ServerPlayerEntity self = ctx.getSource().getPlayerOrThrow();
+                                            ServerPlayerEntity other = EntityArgumentType.getPlayer(ctx, "player");
+                                            if (self.getUuid().equals(other.getUuid())) {
+                                                ctx.getSource().sendError(Text.literal("You cannot ally with yourself.").formatted(Formatting.RED));
+                                                return 0;
+                                            }
+                                            AllianceSystem alliances = AllianceSystem.get(ctx.getSource().getServer());
+                                            alliances.rememberName(self.getUuid(), self.getName().getString());
+                                            alliances.rememberName(other.getUuid(), other.getName().getString());
+                                            alliances.addAlliance(self.getUuid(), other.getUuid());
+                                            ctx.getSource().sendFeedback(() -> Text.literal("Allied with " + other.getName().getString())
+                                                    .formatted(Formatting.GREEN), false);
+                                            other.sendMessage(Text.literal(self.getName().getString() + " has allied with you!")
+                                                    .formatted(Formatting.GREEN));
+                                            return 1;
+                                        })
+                                )
+                        )
+                        .then(CommandManager.literal("remove")
+                                .then(CommandManager.argument("player", EntityArgumentType.player())
+                                        .executes(ctx -> {
+                                            ServerPlayerEntity self = ctx.getSource().getPlayerOrThrow();
+                                            ServerPlayerEntity other = EntityArgumentType.getPlayer(ctx, "player");
+                                            AllianceSystem.get(ctx.getSource().getServer()).removeAlliance(self.getUuid(), other.getUuid());
+                                            ctx.getSource().sendFeedback(() -> Text.literal("Removed alliance with " + other.getName().getString())
+                                                    .formatted(Formatting.YELLOW), false);
+                                            other.sendMessage(Text.literal(self.getName().getString() + " removed their alliance with you.")
+                                                    .formatted(Formatting.RED));
+                                            return 1;
+                                        })
+                                )
+                        )
+                        .then(CommandManager.literal("list")
+                                .executes(ctx -> {
+                                    ServerPlayerEntity self = ctx.getSource().getPlayerOrThrow();
+                                    MinecraftServer server = ctx.getSource().getServer();
+                                    AllianceSystem alliances = AllianceSystem.get(server);
+                                    Set<UUID> allyIds = alliances.getAllies(self.getUuid());
+                                    if (allyIds.isEmpty()) {
+                                        ctx.getSource().sendFeedback(() -> Text.literal("You have no allies.").formatted(Formatting.YELLOW), false);
+                                        return 1;
+                                    }
+                                    List<String> names = new ArrayList<>(allyIds.size());
+                                    for (UUID id : allyIds) {
+                                        boolean online = server.getPlayerManager().getPlayer(id) != null;
+                                        String display = alliances.getDisplayName(server, id);
+                                        names.add(online ? display : display + " (offline)");
+                                    }
+                                    ctx.getSource().sendFeedback(() -> Text.literal("Allies (" + names.size() + "): "
+                                            + String.join(", ", names)).formatted(Formatting.GREEN), false);
+                                    return 1;
+                                })
+                        )
+                )
+                .then(CommandManager.literal("energy")
+                        .requires(YPCommands::isOp)
+                        .then(CommandManager.argument("player", EntityArgumentType.player())
+                                .then(CommandManager.literal("set")
+                                        .then(CommandManager.argument("amount", DoubleArgumentType.doubleArg(0.0, 100000.0))
+                                                .executes(ctx -> {
+                                                    ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+                                                    double amount = DoubleArgumentType.getDouble(ctx, "amount");
+                                                    EnergySystem energy = EnergySystem.get(ctx.getSource().getServer());
+                                                    energy.setEnergy(target.getUuid(), amount);
+                                                    energy.clearBleeding(target.getUuid());
+                                                    YPNetworking.syncHud(target);
+                                                    ctx.getSource().sendFeedback(() -> Text.literal("Set " + target.getName().getString()
+                                                            + "'s Energy to " + amount + ".").formatted(Formatting.GREEN), true);
+                                                    return 1;
+                                                })
+                                        )
+                                )
+                                .then(CommandManager.literal("get")
+                                        .executes(ctx -> {
+                                            ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+                                            double val = EnergySystem.get(ctx.getSource().getServer()).getEnergy(target.getUuid());
+                                            ctx.getSource().sendFeedback(() -> Text.literal(target.getName().getString()
+                                                    + " Energy: " + String.format("%.1f / %.1f", val, YPConfig.get().energy.maxEnergy))
+                                                    .formatted(Formatting.AQUA), false);
+                                            return 1;
+                                        })
+                                )
+                        )
+                )
+                .then(CommandManager.literal("cooldown")
+                        .requires(YPCommands::isOp)
+                        .then(CommandManager.literal("clear")
+                                .then(CommandManager.argument("player", EntityArgumentType.player())
+                                        .executes(ctx -> {
+                                            ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+                                            CooldownSystem.get(ctx.getSource().getServer()).clearAll(target.getUuid());
+                                            YPNetworking.syncHud(target);
+                                            ctx.getSource().sendFeedback(() -> Text.literal("Cleared all cooldowns for "
+                                                    + target.getName().getString() + ".").formatted(Formatting.GREEN), true);
+                                            return 1;
+                                        })
+                                )
+                        )
+                )
+                .then(CommandManager.literal("health")
+                        .requires(YPCommands::isOp)
+                        .then(CommandManager.literal("enable").executes(ctx -> {
+                            YPConfig.get().general.globalHealthEnabled = true;
+                            YPConfig.save();
+                            GlobalHealthSystem.applyAll(ctx.getSource().getServer());
+                            ctx.getSource().sendFeedback(() -> Text.literal("Global player health enabled ("
+                                    + YPConfig.get().general.globalPlayerHealth + " HP).").formatted(Formatting.GREEN), true);
+                            return 1;
+                        }))
+                        .then(CommandManager.literal("disable").executes(ctx -> {
+                            YPConfig.get().general.globalHealthEnabled = false;
+                            YPConfig.save();
+                            GlobalHealthSystem.applyAll(ctx.getSource().getServer());
+                            ctx.getSource().sendFeedback(() -> Text.literal("Global player health disabled.").formatted(Formatting.YELLOW), true);
+                            return 1;
+                        }))
+                        .then(CommandManager.literal("status").executes(ctx -> {
+                            YPConfig cfg = YPConfig.get();
+                            ctx.getSource().sendFeedback(() -> Text.literal("Global player health: "
+                                    + (cfg.general.globalHealthEnabled ? "enabled (" + cfg.general.globalPlayerHealth + " HP)" : "disabled"))
+                                    .formatted(Formatting.YELLOW), false);
+                            return 1;
+                        }))
+                )
+                .then(CommandManager.literal("config")
+                        .requires(YPCommands::isOp)
+                        .then(CommandManager.literal("reload").executes(ctx -> {
+                            YPConfig.load();
+                            GlobalHealthSystem.applyAll(ctx.getSource().getServer());
+                            for (ServerPlayerEntity p : ctx.getSource().getServer().getPlayerManager().getPlayerList()) {
+                                YPNetworking.syncHud(p);
                             }
-                            AllianceManager.get(context.getSource().getServer()).addAlliance(sourcePlayer.getUuid(), target.getUuid());
-                            context.getSource().sendFeedback(() -> Text.literal("Allied with " + target.getName().getString()).formatted(Formatting.GREEN), false);
-                            target.sendMessage(Text.literal(sourcePlayer.getName().getString() + " has allied with you!").formatted(Formatting.GREEN));
+                            ctx.getSource().sendFeedback(() -> Text.literal("Reloaded config/yppowers.json.")
+                                    .formatted(Formatting.GREEN), true);
                             return 1;
-                        })
-                    )
+                        }))
                 )
-                .then(CommandManager.literal("remove")
-                    .then(CommandManager.argument("player", EntityArgumentType.player())
-                        .executes(context -> {
-                            ServerPlayerEntity sourcePlayer = context.getSource().getPlayerOrThrow();
-                            ServerPlayerEntity target = EntityArgumentType.getPlayer(context, "player");
-                            AllianceManager.get(context.getSource().getServer()).removeAlliance(sourcePlayer.getUuid(), target.getUuid());
-                            context.getSource().sendFeedback(() -> Text.literal("Removed alliance with " + target.getName().getString()).formatted(Formatting.GREEN), false);
-                            target.sendMessage(Text.literal(sourcePlayer.getName().getString() + " has removed their alliance with you.").formatted(Formatting.RED));
-                            return 1;
-                        })
-                    )
+                .then(CommandManager.literal("web_slingers")
+                        .requires(YPCommands::isOp)
+                        .then(CommandManager.literal("give")
+                                .then(CommandManager.argument("player", EntityArgumentType.player())
+                                        .executes(ctx -> {
+                                            ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+                                            ItemStack stack = new ItemStack(YPItems.WEB_SLINGERS);
+                                            stack.set(DataComponentTypes.CUSTOM_NAME,
+                                                    Text.literal("Web Slingers").formatted(Formatting.AQUA, Formatting.BOLD));
+                                            if (!target.giveItemStack(stack)) target.dropItem(stack, false);
+                                            ctx.getSource().sendFeedback(() -> Text.literal("Gave Web Slingers to "
+                                                    + target.getName().getString()).formatted(Formatting.GREEN), true);
+                                            return 1;
+                                        })
+                                )
+                        )
                 )
-                .then(CommandManager.literal("list")
-                    .executes(context -> {
-                        ServerPlayerEntity sourcePlayer = context.getSource().getPlayerOrThrow();
-                        Set<UUID> allies = AllianceManager.get(context.getSource().getServer()).getAllies(sourcePlayer.getUuid());
-                        if (allies.isEmpty()) {
-                            context.getSource().sendFeedback(() -> Text.literal("You have no allies.").formatted(Formatting.YELLOW), false);
-                        } else {
-                            StringBuilder allyNames = new StringBuilder();
-                            for (UUID allyId : allies) {
-                                ServerPlayerEntity ally = context.getSource().getServer().getPlayerManager().getPlayer(allyId);
-                                if (ally != null) {
-                                    allyNames.append(ally.getName().getString()).append(", ");
-                                }
-                            }
-                            context.getSource().sendFeedback(() -> Text.literal("Allies: " + allyNames.toString()).formatted(Formatting.GREEN), false);
-                        }
-                        return 1;
-                    })
-                )
-            )
-            .then(CommandManager.literal("web_slingers")
-                .requires(source -> source.getPermissions().hasPermission(new Permission.Level(PermissionLevel.GAMEMASTERS)))
-                .then(CommandManager.literal("give")
-                    .then(CommandManager.argument("player", EntityArgumentType.player())
-                        .executes(context -> {
-                            ServerPlayerEntity target = EntityArgumentType.getPlayer(context, "player");
-                            net.minecraft.item.ItemStack stack = new net.minecraft.item.ItemStack(com.yppowers.item.YPItems.WEB_SLINGERS);
-                            stack.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME,
-                                    Text.literal("Web Slingers").formatted(Formatting.AQUA, Formatting.BOLD));
-                            if (!target.giveItemStack(stack)) target.dropItem(stack, false);
-                            context.getSource().sendFeedback(() -> Text.literal("Gave Web Slingers to " + target.getName().getString()).formatted(Formatting.GREEN), true);
-                            return 1;
-                        })
-                    )
-                )
-            )
         );
+    }
+
+    private static int reportPower(ServerCommandSource source, ServerPlayerEntity target) {
+        PowerId id = PlayerDataStore.get(source.getServer()).getPowerId(target.getUuid());
+        String display = id != null ? id.displayName() + " (" + id.id() + ")" : "None";
+        source.sendFeedback(() -> Text.literal(target.getName().getString() + "'s Power: " + display)
+                .formatted(Formatting.YELLOW), false);
+        return 1;
     }
 }

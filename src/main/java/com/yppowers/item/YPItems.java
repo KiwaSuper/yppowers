@@ -1,5 +1,6 @@
 package com.yppowers.item;
 
+import com.yppowers.YPPowersMod;
 import net.minecraft.item.Item;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
@@ -7,9 +8,9 @@ import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.util.Identifier;
 
-/** Items added by YP Powers. */
+/** Custom items added by YP Powers. */
 public final class YPItems {
-    public static final Identifier WEB_SLINGERS_ID = Identifier.of("yppowers", "web_slingers");
+    public static final Identifier WEB_SLINGERS_ID = Identifier.of(YPPowersMod.MOD_ID, "web_slingers");
     public static final Item WEB_SLINGERS = Registry.register(
             Registries.ITEM,
             WEB_SLINGERS_ID,
@@ -21,6 +22,6 @@ public final class YPItems {
     private YPItems() {}
 
     public static void initialize() {
-        // Invoking this method forces this class to initialize before item use or commands are registered.
+        // Trigger static registration during mod initialization.
     }
 }
