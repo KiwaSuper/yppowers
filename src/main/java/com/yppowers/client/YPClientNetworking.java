@@ -1,6 +1,7 @@
 package com.yppowers.client;
 
 import com.yppowers.client.screen.ShadowArcherMorphScreen;
+import com.yppowers.client.screen.YPPowersGuideScreen;
 import com.yppowers.core.AbilitySlot;
 import com.yppowers.network.YPNetworking;
 import net.fabricmc.api.EnvType;
@@ -59,6 +60,9 @@ public final class YPClientNetworking {
                         else ClientState.iceEmperorForms.remove(id);
                     } catch (IllegalArgumentException ignored) {}
                 }));
+
+        ClientPlayNetworking.registerGlobalReceiver(YPNetworking.OpenGuideScreenPayload.ID, (payload, ctx) ->
+                ctx.client().execute(YPClientNetworking::openGuideScreen));
     }
 
     public static void sendTrigger(AbilitySlot slot) {
@@ -76,5 +80,10 @@ public final class YPClientNetworking {
     public static void openMorphScreen() {
         MinecraftClient client = MinecraftClient.getInstance();
         client.setScreen(new ShadowArcherMorphScreen());
+    }
+
+    public static void openGuideScreen() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        client.setScreen(new YPPowersGuideScreen());
     }
 }

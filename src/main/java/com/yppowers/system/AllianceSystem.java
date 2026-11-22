@@ -25,8 +25,14 @@ import java.util.UUID;
  * Caches last-known player names so {@code /yp alliance list} works cleanly even for offline allies.
  */
 public final class AllianceSystem extends PersistentState {
+    public static final long INVITE_LIFETIME_TICKS = 1200L; // 60 seconds
+
+    public record PendingInvite(UUID sender, UUID target, long expiresAtTick) {}
+
     private final Map<UUID, Set<UUID>> alliances = new HashMap<>();
     private final Map<UUID, String> knownNames = new HashMap<>();
+    /** Ephemeral pending invites keyed by target UUID -> (sender UUID -> expiresAtTick). */
+    private final Map<UUID, Map<UUID, Long>> pendingInvites = new HashMap<>();
 
     private static final Codec<AllianceSystem> CODEC = Codec.PASSTHROUGH.xmap(
             dynamic -> {
@@ -109,6 +115,60 @@ public final class AllianceSystem extends PersistentState {
     public Set<UUID> getAllies(UUID player) {
         Set<UUID> set = alliances.get(player);
         return set == null ? Collections.emptySet() : Collections.unmodifiableSet(new HashSet<>(set));
+    }
+
+    // -------------------------------------------------------------------------
+    // Consent-based Alliance Invites (prevents unilateral PvP force-ally exploit)
+    // -------------------------------------------------------------------------
+
+    public enum InviteResult { SENT, ALREADY_ALLIED, ALREADY_PENDING, SELF_INVITE }
+
+    public InviteResult sendInvite(UUID sender, UUID target, long currentTick) {
+        if (sender == null || target == null || sender.equals(target)) return InviteResult.SELF_INVITE;
+        if (areAllied(sender, target)) return InviteResult.ALREADY_ALLIED;
+        pruneExpiredInvites(target, currentTick);
+        Map<UUID, Long> inbox = pendingInvites.computeIfAbsent(target, ignored -> new HashMap<>());
+        if (inbox.containsKey(sender)) return InviteResult.ALREADY_PENDING;
+        inbox.put(sender, currentTick + INVITE_LIFETIME_TICKS);
+        return InviteResult.SENT;
+    }
+
+    public boolean hasPendingInvite(UUID sender, UUID target, long currentTick) {
+        if (sender == null || target == null) return false;
+        pruneExpiredInvites(target, currentTick);
+        Map<UUID, Long> inbox = pendingInvites.get(target);
+        return inbox != null && inbox.containsKey(sender);
+    }
+
+    public boolean acceptInvite(UUID target, UUID sender, long currentTick) {
+        if (sender == null || target == null) return false;
+        pruneExpiredInvites(target, currentTick);
+        Map<UUID, Long> inbox = pendingInvites.get(target);
+        if (inbox == null || inbox.remove(sender) == null) return false;
+        if (inbox.isEmpty()) pendingInvites.remove(target);
+        // Also clear any mutual opposite-direction invite
+        Map<UUID, Long> reverse = pendingInvites.get(sender);
+        if (reverse != null) {
+            reverse.remove(target);
+            if (reverse.isEmpty()) pendingInvites.remove(sender);
+        }
+        addAlliance(sender, target);
+        return true;
+    }
+
+    public boolean declineInvite(UUID target, UUID sender) {
+        if (sender == null || target == null) return false;
+        Map<UUID, Long> inbox = pendingInvites.get(target);
+        if (inbox == null || inbox.remove(sender) == null) return false;
+        if (inbox.isEmpty()) pendingInvites.remove(target);
+        return true;
+    }
+
+    private void pruneExpiredInvites(UUID target, long currentTick) {
+        Map<UUID, Long> inbox = pendingInvites.get(target);
+        if (inbox == null) return;
+        inbox.entrySet().removeIf(e -> currentTick >= e.getValue());
+        if (inbox.isEmpty()) pendingInvites.remove(target);
     }
 
     public NbtCompound toNbt() {

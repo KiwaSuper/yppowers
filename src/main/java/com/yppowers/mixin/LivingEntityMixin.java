@@ -3,6 +3,7 @@ package com.yppowers.mixin;
 import com.yppowers.core.PlayerDataStore;
 import com.yppowers.core.Power;
 import com.yppowers.system.AllianceSystem;
+import com.yppowers.system.CombatTagSystem;
 import com.yppowers.system.CombatUtil;
 import com.yppowers.system.FreezeSystem;
 import com.yppowers.system.GraceSystem;
@@ -60,6 +61,12 @@ public abstract class LivingEntityMixin {
     @Inject(method = "damage", at = @At("RETURN"))
     private void yppowers$postDamage(ServerWorld world, DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
         yppowers$currentDamageSource = null;
+        if (Boolean.TRUE.equals(cir.getReturnValue()) && ((Object) this) instanceof ServerPlayerEntity victim) {
+            ServerPlayerEntity attacker = CombatTagSystem.resolvePlayerAttacker(world.getServer(), source);
+            if (attacker != null && attacker != victim) {
+                CombatTagSystem.tagPvp(attacker, victim);
+            }
+        }
     }
 
     @ModifyVariable(method = "damage", at = @At("HEAD"), argsOnly = true)

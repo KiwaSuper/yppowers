@@ -1,6 +1,6 @@
-# YP Powers (v2.0)
+# YP Powers (v2.1)
 
-A Fabric mod for **Minecraft Java Edition 1.21.11** (compiled with **Java 25**) adding **17 unique combat powers**, a shared Energy & Bleeding system, bidirectional alliances, global Grace periods, a persistent Pocket Domain dimension, mob morphing, an upgraded Power & Cooldown HUD, and clean structured JSON configuration.
+A Fabric mod for **Minecraft Java Edition 1.21.11** (compiled with **Java 25**) adding **17 unique combat powers**, a shared Energy & Bleeding system, consent-based alliances, a 30-second anti-combat-log PvP timer, global Grace periods, a persistent Pocket Domain dimension, mob morphing, an upgraded Power & Cooldown HUD with an in-game Power Guide (`P`), and clean structured JSON configuration.
 
 ---
 
@@ -9,7 +9,7 @@ A Fabric mod for **Minecraft Java Edition 1.21.11** (compiled with **Java 25**) 
 1. **Java 25** (JDK/JRE 25 LTS)
 2. **Minecraft 1.21.11** with [Fabric Loader](https://fabricmc.net/use/) **0.18.1+**
 3. [Fabric API](https://modrinth.com/mod/fabric-api) **0.141.6+1.21.11+**
-4. Place `yppowers-2.0.0.jar` and Fabric API in `.minecraft/mods` (required on **both server and client** for multiplayer).
+4. Place `yppowers-2.1.0.jar` and Fabric API in `.minecraft/mods` (required on **both server and client** for multiplayer).
 
 ---
 
@@ -62,10 +62,21 @@ Rebind all keys under **Options → Controls → Key Binds → YP Powers**:
 | `K` | Ice Emperor Form Switch |
 | `N` | Boots of the Sky Feather Falling Toggle |
 | `L` | Ice Emperor Heat Blast |
+| `P` | Open In-Game Power Guide & HUD Settings |
 
 ---
 
 ## Commands
+
+### Player Commands
+```text
+/yp guide
+/yp alliance invite <player>   (alias: /yp alliance add <player>)
+/yp alliance accept <player>
+/yp alliance decline <player>
+/yp alliance remove <player>
+/yp alliance list
+```
 
 ### Operator Commands
 ```text
@@ -76,24 +87,18 @@ Rebind all keys under **Options → Controls → Key Binds → YP Powers**:
 /yp energy set <player> <amount>
 /yp energy get <player>
 /yp cooldown clear <player>
+/yp combat clear <player>
 /yp health enable | disable | status
 /yp config reload
 /yp web_slingers give <player>
 /grace <minutes>        (use 0 to end early)
 ```
 
-### Alliance Commands (All Players)
-```text
-/yp alliance add <player>
-/yp alliance remove <player>
-/yp alliance list
-```
-
 ---
 
 ## Configuration
 
-Configuration is saved cleanly as nested JSON at `config/yppowers.json`, organized into `general`, `energy`, `hud`, and `powers.<powerName>` sections. Edit and run `/yp config reload` in-game to apply changes immediately without restarting.
+Configuration is saved cleanly as nested JSON at `config/yppowers.json`, organized into `general`, `energy`, `combat`, `hud`, and `powers.<powerName>` sections. Edit and run `/yp config reload` in-game to apply changes immediately without restarting.
 
 ---
 
@@ -115,7 +120,7 @@ Run unit tests with:
 .\gradlew.bat test
 ```
 
-The built mod JAR is output to `build/libs/yppowers-2.0.0.jar`.
+The built mod JAR is output to `build/libs/yppowers-2.1.0.jar`.
 
 ---
 

@@ -10,6 +10,7 @@ import com.yppowers.core.PowerId;
 import com.yppowers.item.YPItems;
 import com.yppowers.network.YPNetworking;
 import com.yppowers.system.AllianceSystem;
+import com.yppowers.system.CombatTagSystem;
 import com.yppowers.system.CooldownSystem;
 import com.yppowers.system.EnergySystem;
 import com.yppowers.system.GlobalHealthSystem;
@@ -25,6 +26,9 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.ClickEvent;
+import net.minecraft.text.HoverEvent;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
@@ -68,6 +72,7 @@ public final class YPCommands {
                                 return 1;
                             }
                             grace.setTicksRemaining(Math.multiplyExact(minutes, 1200));
+                            CombatTagSystem.clearAll();
                             server.getPlayerManager().broadcast(
                                     Text.literal("Grace period started for " + minutes
                                             + (minutes == 1 ? " minute" : " minutes")
@@ -79,6 +84,13 @@ public final class YPCommands {
         );
 
         dispatcher.register(CommandManager.literal("yp")
+                .then(CommandManager.literal("guide")
+                        .executes(ctx -> {
+                            ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+                            YPNetworking.sendOpenGuide(player);
+                            return 1;
+                        })
+                )
                 .then(CommandManager.literal("power")
                         .requires(YPCommands::isOp)
                         .then(CommandManager.literal("assign")
@@ -135,23 +147,54 @@ public final class YPCommands {
                         )
                 )
                 .then(CommandManager.literal("alliance")
+                        .then(CommandManager.literal("invite")
+                                .then(CommandManager.argument("player", EntityArgumentType.player())
+                                        .executes(ctx -> sendAllianceInvite(ctx.getSource(), EntityArgumentType.getPlayer(ctx, "player")))
+                                )
+                        )
                         .then(CommandManager.literal("add")
+                                .then(CommandManager.argument("player", EntityArgumentType.player())
+                                        .executes(ctx -> sendAllianceInvite(ctx.getSource(), EntityArgumentType.getPlayer(ctx, "player")))
+                                )
+                        )
+                        .then(CommandManager.literal("accept")
                                 .then(CommandManager.argument("player", EntityArgumentType.player())
                                         .executes(ctx -> {
                                             ServerPlayerEntity self = ctx.getSource().getPlayerOrThrow();
-                                            ServerPlayerEntity other = EntityArgumentType.getPlayer(ctx, "player");
-                                            if (self.getUuid().equals(other.getUuid())) {
-                                                ctx.getSource().sendError(Text.literal("You cannot ally with yourself.").formatted(Formatting.RED));
+                                            if (blockAllianceInCombat(ctx.getSource(), self)) return 0;
+                                            ServerPlayerEntity sender = EntityArgumentType.getPlayer(ctx, "player");
+                                            MinecraftServer server = ctx.getSource().getServer();
+                                            AllianceSystem alliances = AllianceSystem.get(server);
+                                            if (!alliances.acceptInvite(self.getUuid(), sender.getUuid(), server.getTicks())) {
+                                                ctx.getSource().sendError(Text.literal("No pending alliance invite from "
+                                                        + sender.getName().getString() + ".").formatted(Formatting.RED));
                                                 return 0;
                                             }
-                                            AllianceSystem alliances = AllianceSystem.get(ctx.getSource().getServer());
                                             alliances.rememberName(self.getUuid(), self.getName().getString());
-                                            alliances.rememberName(other.getUuid(), other.getName().getString());
-                                            alliances.addAlliance(self.getUuid(), other.getUuid());
-                                            ctx.getSource().sendFeedback(() -> Text.literal("Allied with " + other.getName().getString())
-                                                    .formatted(Formatting.GREEN), false);
-                                            other.sendMessage(Text.literal(self.getName().getString() + " has allied with you!")
-                                                    .formatted(Formatting.GREEN));
+                                            alliances.rememberName(sender.getUuid(), sender.getName().getString());
+                                            ctx.getSource().sendFeedback(() -> Text.literal("You are now allied with "
+                                                    + sender.getName().getString() + "!").formatted(Formatting.GREEN), false);
+                                            sender.sendMessage(Text.literal(self.getName().getString()
+                                                    + " accepted your alliance invite!").formatted(Formatting.GREEN));
+                                            return 1;
+                                        })
+                                )
+                        )
+                        .then(CommandManager.literal("decline")
+                                .then(CommandManager.argument("player", EntityArgumentType.player())
+                                        .executes(ctx -> {
+                                            ServerPlayerEntity self = ctx.getSource().getPlayerOrThrow();
+                                            ServerPlayerEntity sender = EntityArgumentType.getPlayer(ctx, "player");
+                                            AllianceSystem alliances = AllianceSystem.get(ctx.getSource().getServer());
+                                            if (!alliances.declineInvite(self.getUuid(), sender.getUuid())) {
+                                                ctx.getSource().sendError(Text.literal("No pending alliance invite from "
+                                                        + sender.getName().getString() + ".").formatted(Formatting.RED));
+                                                return 0;
+                                            }
+                                            ctx.getSource().sendFeedback(() -> Text.literal("Declined alliance invite from "
+                                                    + sender.getName().getString() + ".").formatted(Formatting.YELLOW), false);
+                                            sender.sendMessage(Text.literal(self.getName().getString()
+                                                    + " declined your alliance invite.").formatted(Formatting.YELLOW));
                                             return 1;
                                         })
                                 )
@@ -160,6 +203,7 @@ public final class YPCommands {
                                 .then(CommandManager.argument("player", EntityArgumentType.player())
                                         .executes(ctx -> {
                                             ServerPlayerEntity self = ctx.getSource().getPlayerOrThrow();
+                                            if (blockAllianceInCombat(ctx.getSource(), self)) return 0;
                                             ServerPlayerEntity other = EntityArgumentType.getPlayer(ctx, "player");
                                             AllianceSystem.get(ctx.getSource().getServer()).removeAlliance(self.getUuid(), other.getUuid());
                                             ctx.getSource().sendFeedback(() -> Text.literal("Removed alliance with " + other.getName().getString())
@@ -217,6 +261,21 @@ public final class YPCommands {
                                             ctx.getSource().sendFeedback(() -> Text.literal(target.getName().getString()
                                                     + " Energy: " + String.format("%.1f / %.1f", val, YPConfig.get().energy.maxEnergy))
                                                     .formatted(Formatting.AQUA), false);
+                                            return 1;
+                                        })
+                                )
+                        )
+                )
+                .then(CommandManager.literal("combat")
+                        .requires(YPCommands::isOp)
+                        .then(CommandManager.literal("clear")
+                                .then(CommandManager.argument("player", EntityArgumentType.player())
+                                        .executes(ctx -> {
+                                            ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+                                            CombatTagSystem.clearTag(target.getUuid());
+                                            YPNetworking.syncHud(target);
+                                            ctx.getSource().sendFeedback(() -> Text.literal("Cleared combat tag for "
+                                                    + target.getName().getString() + ".").formatted(Formatting.GREEN), true);
                                             return 1;
                                         })
                                 )
@@ -293,6 +352,64 @@ public final class YPCommands {
                         )
                 )
         );
+    }
+
+    private static boolean blockAllianceInCombat(ServerCommandSource source, ServerPlayerEntity player) {
+        if (YPConfig.get().combat.enabled && YPConfig.get().combat.blockAllianceChangesInCombat
+                && CombatTagSystem.isTagged(player.getUuid())) {
+            source.sendError(Text.literal("You cannot change alliances while in PvP combat ("
+                    + CooldownSystem.formatSeconds(CombatTagSystem.getRemainingTicks(player.getUuid())) + " remaining).")
+                    .formatted(Formatting.RED));
+            return true;
+        }
+        return false;
+    }
+
+    private static int sendAllianceInvite(ServerCommandSource source, ServerPlayerEntity other)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayerEntity self = source.getPlayerOrThrow();
+        if (blockAllianceInCombat(source, self)) return 0;
+        MinecraftServer server = source.getServer();
+        AllianceSystem alliances = AllianceSystem.get(server);
+        AllianceSystem.InviteResult result = alliances.sendInvite(self.getUuid(), other.getUuid(), server.getTicks());
+        switch (result) {
+            case SELF_INVITE -> {
+                source.sendError(Text.literal("You cannot ally with yourself.").formatted(Formatting.RED));
+                return 0;
+            }
+            case ALREADY_ALLIED -> {
+                source.sendError(Text.literal("You are already allied with " + other.getName().getString() + ".").formatted(Formatting.YELLOW));
+                return 0;
+            }
+            case ALREADY_PENDING -> {
+                source.sendError(Text.literal("You already have a pending invite to " + other.getName().getString() + ".").formatted(Formatting.YELLOW));
+                return 0;
+            }
+            case SENT -> {
+                String senderName = self.getName().getString();
+                source.sendFeedback(() -> Text.literal("Sent alliance invite to " + other.getName().getString()
+                        + " (expires in 60s).").formatted(Formatting.AQUA), false);
+
+                MutableText acceptBtn = Text.literal("[Accept]")
+                        .formatted(Formatting.GREEN, Formatting.BOLD)
+                        .styled(s -> s
+                                .withClickEvent(new ClickEvent.RunCommand("/yp alliance accept " + senderName))
+                                .withHoverEvent(new HoverEvent.ShowText(Text.literal("Accept alliance with " + senderName))));
+                MutableText declineBtn = Text.literal("[Decline]")
+                        .formatted(Formatting.RED, Formatting.BOLD)
+                        .styled(s -> s
+                                .withClickEvent(new ClickEvent.RunCommand("/yp alliance decline " + senderName))
+                                .withHoverEvent(new HoverEvent.ShowText(Text.literal("Decline alliance invite"))));
+
+                other.sendMessage(Text.literal(senderName + " invited you to an alliance! ")
+                        .formatted(Formatting.GOLD)
+                        .append(acceptBtn)
+                        .append(Text.literal(" "))
+                        .append(declineBtn));
+                return 1;
+            }
+        }
+        return 0;
     }
 
     private static int reportPower(ServerCommandSource source, ServerPlayerEntity target) {

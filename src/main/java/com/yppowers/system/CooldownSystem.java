@@ -20,11 +20,21 @@ import java.util.UUID;
 
 /**
  * Unified named cooldown manager supporting both short volatile cooldowns and
- * world-persisted long cooldowns (e.g. Overdrive, Black Hole, Raigo, Domain, Heat Blast lockout).
+ * world-persisted long cooldowns, tracking both remaining and total duration for HUD progress bars.
  */
 public final class CooldownSystem extends PersistentState {
-    private final Map<UUID, Map<String, Integer>> persistent = new HashMap<>();
-    private final Map<UUID, Map<String, Integer>> volatileMap = new HashMap<>();
+    private static final class CooldownEntry {
+        int remaining;
+        int maxDuration;
+
+        CooldownEntry(int remaining, int maxDuration) {
+            this.remaining = remaining;
+            this.maxDuration = Math.max(remaining, maxDuration);
+        }
+    }
+
+    private final Map<UUID, Map<String, CooldownEntry>> persistent = new HashMap<>();
+    private final Map<UUID, Map<String, CooldownEntry>> volatileMap = new HashMap<>();
     private long lastSaveTick = -20;
 
     private static final Codec<CooldownSystem> CODEC = Codec.PASSTHROUGH.xmap(
@@ -47,43 +57,53 @@ public final class CooldownSystem extends PersistentState {
 
     public int getRemaining(UUID playerId, String key) {
         if (playerId == null || key == null || key.isEmpty()) return 0;
-        int p = persistent.getOrDefault(playerId, Collections.emptyMap()).getOrDefault(key, 0);
-        int v = volatileMap.getOrDefault(playerId, Collections.emptyMap()).getOrDefault(key, 0);
-        return Math.max(0, Math.max(p, v));
+        CooldownEntry p = persistent.getOrDefault(playerId, Collections.emptyMap()).get(key);
+        CooldownEntry v = volatileMap.getOrDefault(playerId, Collections.emptyMap()).get(key);
+        int pr = p == null ? 0 : p.remaining;
+        int vr = v == null ? 0 : v.remaining;
+        return Math.max(0, Math.max(pr, vr));
+    }
+
+    public int getMaxDuration(UUID playerId, String key) {
+        if (playerId == null || key == null || key.isEmpty()) return 0;
+        CooldownEntry p = persistent.getOrDefault(playerId, Collections.emptyMap()).get(key);
+        CooldownEntry v = volatileMap.getOrDefault(playerId, Collections.emptyMap()).get(key);
+        int pr = p == null ? 0 : p.remaining;
+        int vr = v == null ? 0 : v.remaining;
+        if (pr >= vr && p != null) return p.maxDuration;
+        return v == null ? 0 : v.maxDuration;
     }
 
     public boolean isOnCooldown(UUID playerId, String key) {
         return getRemaining(playerId, key) > 0;
     }
 
-    /** Set a volatile (session-scoped) cooldown in ticks. */
     public void set(UUID playerId, String key, int ticks) {
         set(playerId, key, ticks, false);
     }
 
-    /** Set a persistent (survives restart/disconnect) cooldown in ticks. */
     public void setPersistent(UUID playerId, String key, int ticks) {
         set(playerId, key, ticks, true);
     }
 
     public void set(UUID playerId, String key, int ticks, boolean persist) {
         if (playerId == null || key == null || key.isEmpty()) return;
-        Map<UUID, Map<String, Integer>> target = persist ? persistent : volatileMap;
+        Map<UUID, Map<String, CooldownEntry>> target = persist ? persistent : volatileMap;
         if (ticks <= 0) {
             clearKey(playerId, key);
             return;
         }
-        target.computeIfAbsent(playerId, ignored -> new HashMap<>()).put(key, ticks);
+        target.computeIfAbsent(playerId, ignored -> new HashMap<>()).put(key, new CooldownEntry(ticks, ticks));
         if (persist) markDirty();
     }
 
     public void clearKey(UUID playerId, String key) {
-        Map<String, Integer> pMap = persistent.get(playerId);
+        Map<String, CooldownEntry> pMap = persistent.get(playerId);
         if (pMap != null && pMap.remove(key) != null) {
             if (pMap.isEmpty()) persistent.remove(playerId);
             markDirty();
         }
-        Map<String, Integer> vMap = volatileMap.get(playerId);
+        Map<String, CooldownEntry> vMap = volatileMap.get(playerId);
         if (vMap != null) {
             vMap.remove(key);
             if (vMap.isEmpty()) volatileMap.remove(playerId);
@@ -95,7 +115,6 @@ public final class CooldownSystem extends PersistentState {
         volatileMap.remove(playerId);
     }
 
-    /** Checks cooldown and sends a clean action-bar notice if blocked. Returns true if ready. */
     public boolean checkReady(ServerPlayerEntity player, String key, String displayName) {
         int remaining = getRemaining(player.getUuid(), key);
         if (remaining > 0) {
@@ -125,17 +144,16 @@ public final class CooldownSystem extends PersistentState {
         }
     }
 
-    private static boolean decrementMap(Map<UUID, Map<String, Integer>> outer) {
+    private static boolean decrementMap(Map<UUID, Map<String, CooldownEntry>> outer) {
         boolean changed = false;
-        Iterator<Map.Entry<UUID, Map<String, Integer>>> outerIt = outer.entrySet().iterator();
+        Iterator<Map.Entry<UUID, Map<String, CooldownEntry>>> outerIt = outer.entrySet().iterator();
         while (outerIt.hasNext()) {
-            Map<String, Integer> inner = outerIt.next().getValue();
-            Iterator<Map.Entry<String, Integer>> innerIt = inner.entrySet().iterator();
+            Map<String, CooldownEntry> inner = outerIt.next().getValue();
+            Iterator<Map.Entry<String, CooldownEntry>> innerIt = inner.entrySet().iterator();
             while (innerIt.hasNext()) {
-                Map.Entry<String, Integer> entry = innerIt.next();
-                int next = entry.getValue() - 1;
-                if (next <= 0) innerIt.remove();
-                else entry.setValue(next);
+                CooldownEntry entry = innerIt.next().getValue();
+                entry.remaining--;
+                if (entry.remaining <= 0) innerIt.remove();
                 changed = true;
             }
             if (inner.isEmpty()) outerIt.remove();
@@ -150,7 +168,12 @@ public final class CooldownSystem extends PersistentState {
             if (map.isEmpty()) return;
             NbtCompound p = new NbtCompound();
             map.forEach((k, v) -> {
-                if (v > 0) p.putInt(k, v);
+                if (v.remaining > 0) {
+                    NbtCompound item = new NbtCompound();
+                    item.putInt("R", v.remaining);
+                    item.putInt("M", v.maxDuration);
+                    p.put(k, item);
+                }
             });
             if (!p.isEmpty()) playersNbt.put(uuid.toString(), p);
         });
@@ -165,10 +188,12 @@ public final class CooldownSystem extends PersistentState {
             try {
                 UUID uuid = UUID.fromString(uuidKey);
                 NbtCompound p = playersNbt.getCompoundOrEmpty(uuidKey);
-                Map<String, Integer> map = new HashMap<>();
+                Map<String, CooldownEntry> map = new HashMap<>();
                 for (String cdKey : p.getKeys()) {
-                    int ticks = p.getInt(cdKey, 0);
-                    if (ticks > 0) map.put(cdKey, ticks);
+                    NbtCompound item = p.getCompoundOrEmpty(cdKey);
+                    int rem = item.getInt("R", p.getInt(cdKey, 0));
+                    int max = item.getInt("M", rem);
+                    if (rem > 0) map.put(cdKey, new CooldownEntry(rem, Math.max(rem, max)));
                 }
                 if (!map.isEmpty()) sys.persistent.put(uuid, map);
             } catch (IllegalArgumentException ignored) {}

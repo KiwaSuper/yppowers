@@ -24,13 +24,15 @@ class CooldownSystemTest {
 
         assertFalse(cds.isOnCooldown(player, "short_cd"));
         assertEquals(117, cds.getRemaining(player, "long_cd"));
+        assertEquals(120, cds.getMaxDuration(player, "long_cd"));
 
-        // Only persistent cooldown survives NBT round-trip
+        // Only persistent cooldown survives NBT round-trip (preserving max duration for HUD bar)
         cds.set(player, "temp_cd", 50);
         NbtCompound nbt = cds.toNbt();
         CooldownSystem restored = CooldownSystem.fromNbt(nbt);
 
         assertEquals(117, restored.getRemaining(player, "long_cd"));
+        assertEquals(120, restored.getMaxDuration(player, "long_cd"));
         assertEquals(0, restored.getRemaining(player, "temp_cd"));
 
         restored.clearAll(player);

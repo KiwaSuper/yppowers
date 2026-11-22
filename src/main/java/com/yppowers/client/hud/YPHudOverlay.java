@@ -2,6 +2,7 @@ package com.yppowers.client.hud;
 
 import com.yppowers.YPPowersMod;
 import com.yppowers.client.ClientState;
+import com.yppowers.client.YPKeybinds;
 import com.yppowers.config.HudConfig;
 import com.yppowers.config.YPConfig;
 import com.yppowers.core.AbilitySlot;
@@ -23,15 +24,15 @@ import java.util.List;
 
 /**
  * Upgraded YP Powers HUD:
- * - Anchored to TOP_LEFT by default (completely clear of chat, hotbar, hearts, and potion icons).
- * - Configurable via {@code hud.anchor} (TOP_LEFT, TOP_RIGHT, TOP_CENTER, BOTTOM_LEFT, BOTTOM_RIGHT).
- * - Automatically hides when the F3 debug overlay is open ({@code hud.hideOnDebugScreen}).
+ * - Anchored to TOP_LEFT by default (configurable via in-game HUD Settings or config/yppowers.json).
+ * - Displays actual rebound key labels dynamically via {@link YPKeybinds#getBoundKeyLabel(AbilitySlot)}.
+ * - Renders smooth draining cooldown progress bars inside cooling-down ability pills.
  */
 @Environment(EnvType.CLIENT)
 public final class YPHudOverlay {
-    private static final int MAX_PILL_ROW_WIDTH = 280;
+    private static final int MAX_PILL_ROW_WIDTH = 300;
 
-    private record PillData(String text, int width, int textColor, int underlineColor) {}
+    private record PillData(String text, int width, int textColor, int underlineColor, float cooldownRatio) {}
 
     private YPHudOverlay() {}
 
@@ -44,14 +45,12 @@ public final class YPHudOverlay {
         if (client.player == null || client.world == null || client.options.hudHidden) return;
 
         HudConfig cfg = YPConfig.get().hud;
-
         HudSnapshot snap = ClientState.hud;
         PowerId powerId = ClientState.currentPower();
         TextRenderer tr = client.textRenderer;
         int screenW = context.getScaledWindowWidth();
         int screenH = context.getScaledWindowHeight();
 
-        // Precompute pill rows so we know total height & width for any anchor
         boolean showHeader = cfg.showPowerPanel && powerId != null;
         String headerTitle = showHeader ? powerId.displayName() : "";
         String headerChip = showHeader
@@ -69,12 +68,15 @@ public final class YPHudOverlay {
             int rowW = 0;
             for (HudSnapshot.SlotEntry slot : snap.slots()) {
                 AbilitySlot abilitySlot = AbilitySlot.fromWireId(slot.slotWireId());
-                String key = abilitySlot != null ? abilitySlot.defaultKeyLabel() : "?";
+                String key = YPKeybinds.getBoundKeyLabel(abilitySlot);
                 String suffix;
                 int textColor;
+                float cdRatio = 0.0f;
                 if (slot.cooldownTicks() > 0) {
                     suffix = " " + CooldownSystem.formatSeconds(slot.cooldownTicks());
-                    textColor = 0xFFFFAA55;
+                    textColor = 0xFFFFCC77;
+                    int denom = Math.max(slot.cooldownTicks(), Math.max(1, slot.maxCooldownTicks()));
+                    cdRatio = Math.max(0.0f, Math.min(1.0f, (float) slot.cooldownTicks() / (float) denom));
                 } else if (slot.isToggle()) {
                     suffix = slot.toggleActive() ? " ON" : " OFF";
                     textColor = slot.toggleActive() ? 0xFF66FF88 : 0xFF999999;
@@ -87,25 +89,27 @@ public final class YPHudOverlay {
                 }
                 String text = "[" + key + "] " + slot.label() + suffix;
                 int w = tr.getWidth(text) + 6;
-                int underline = slot.cooldownTicks() > 0 ? 0xAAFF9933 : (accent & 0x00FFFFFF) | 0xAA000000;
+                int underline = slot.cooldownTicks() > 0 ? 0xCCFF9933 : (accent & 0x00FFFFFF) | 0xCC000000;
                 if (!currentRow.isEmpty() && rowW + 3 + w > MAX_PILL_ROW_WIDTH) {
                     pillRows.add(currentRow);
                     currentRow = new ArrayList<>();
                     rowW = 0;
                 }
-                currentRow.add(new PillData(text, w, textColor, underline));
+                currentRow.add(new PillData(text, w, textColor, underline, cdRatio));
                 rowW += (currentRow.size() > 1 ? 3 : 0) + w;
             }
             if (!currentRow.isEmpty()) pillRows.add(currentRow);
         }
 
         boolean showEnergy = cfg.showEnergyBar;
+        boolean showCombat = snap.combatTicks() > 0;
         boolean showWarning = ClientState.hudWarningTicks > 0 && !ClientState.hudWarningText.isBlank();
 
         int totalHeight = 0;
         if (showHeader) totalHeight += 15;
         if (showEnergy) totalHeight += 13;
         totalHeight += pillRows.size() * 14;
+        if (showCombat) totalHeight += 14;
         if (showWarning) totalHeight += 13;
         if (totalHeight <= 0) return;
 
@@ -165,7 +169,7 @@ public final class YPHudOverlay {
             cursorY += 13;
         }
 
-        // 3. Ability Cooldown / Toggle Pills (auto-wrapped cleanly)
+        // 3. Ability Cooldown / Toggle Pills with live draining progress bars
         for (List<PillData> row : pillRows) {
             int rowW = 0;
             for (int i = 0; i < row.size(); i++) {
@@ -174,14 +178,35 @@ public final class YPHudOverlay {
             int cursorX = alignX(cfg, screenW, rowW, right, center);
             for (PillData pill : row) {
                 context.fill(cursorX, cursorY, cursorX + pill.width(), cursorY + 11, 0xAA14141C);
-                context.fill(cursorX, cursorY + 10, cursorX + pill.width(), cursorY + 11, pill.underlineColor());
+                if (pill.cooldownRatio() > 0.0f) {
+                    int fillW = Math.max(1, Math.round(pill.width() * pill.cooldownRatio()));
+                    context.fill(cursorX, cursorY, cursorX + fillW, cursorY + 10, 0x55FF8822);
+                    context.fill(cursorX, cursorY + 10, cursorX + fillW, cursorY + 11, pill.underlineColor());
+                } else {
+                    context.fill(cursorX, cursorY + 10, cursorX + pill.width(), cursorY + 11, pill.underlineColor());
+                }
                 context.drawText(tr, pill.text(), cursorX + 3, cursorY + 2, pill.textColor(), true);
                 cursorX += pill.width() + 3;
             }
             cursorY += 14;
         }
 
-        // 4. Urgent HUD Warning (e.g. Spirit Channeler "ARE YOU SURE?")
+        // 4. PvP Combat Timer Badge (always visible when tagged so players don't accidentally combat-log)
+        if (showCombat) {
+            String combatLabel = "COMBAT " + CooldownSystem.formatSeconds(snap.combatTicks()) + " — DO NOT LOG OUT";
+            int cw = tr.getWidth(combatLabel) + 8;
+            int cx = alignX(cfg, screenW, cw, right, center);
+            float ratio = Math.max(0.0f, Math.min(1.0f,
+                    (float) snap.combatTicks() / (float) Math.max(snap.combatTicks(), Math.max(1, snap.maxCombatTicks()))));
+            int fillW = Math.max(2, Math.round(cw * ratio));
+            context.fill(cx, cursorY, cx + cw, cursorY + 11, 0xCC1E0A0E);
+            context.fill(cx, cursorY, cx + fillW, cursorY + 10, 0x66EE2233);
+            context.fill(cx, cursorY + 10, cx + fillW, cursorY + 11, 0xFFFF3344);
+            context.drawText(tr, combatLabel, cx + 4, cursorY + 2, 0xFFFF7788, true);
+            cursorY += 14;
+        }
+
+        // 5. Urgent HUD Warning
         if (showWarning) {
             Text warning = Text.literal(ClientState.hudWarningText).formatted(Formatting.RED, Formatting.BOLD);
             int w = tr.getWidth(warning);

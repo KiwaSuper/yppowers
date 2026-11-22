@@ -12,7 +12,7 @@ import net.minecraft.client.util.InputUtil;
 import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
 
-/** Client keybindings cleanly mapped to typed {@link AbilitySlot} values. */
+/** Client keybindings cleanly mapped to typed {@link AbilitySlot} values with dynamic label lookup. */
 @Environment(EnvType.CLIENT)
 public final class YPKeybinds {
     private static final KeyBinding.Category CATEGORY = KeyBinding.Category.create(Identifier.of(YPPowersMod.MOD_ID, "powers"));
@@ -24,6 +24,7 @@ public final class YPKeybinds {
     private static KeyBinding KEY_FORM_SWITCH;
     private static KeyBinding KEY_FEATHER_FALLING;
     private static KeyBinding KEY_HEAT_BLAST;
+    private static KeyBinding KEY_GUIDE;
     private static long lastJumpPressMs;
 
     private YPKeybinds() {}
@@ -37,10 +38,53 @@ public final class YPKeybinds {
         KEY_FORM_SWITCH = reg("key.yppowers.ice_emperor_form", GLFW.GLFW_KEY_K);
         KEY_FEATHER_FALLING = reg("key.yppowers.boots_feather_falling", GLFW.GLFW_KEY_N);
         KEY_HEAT_BLAST = reg("key.yppowers.ice_heat_blast", GLFW.GLFW_KEY_L);
+        KEY_GUIDE = reg("key.yppowers.guide", GLFW.GLFW_KEY_P);
     }
 
     private static KeyBinding reg(String translationKey, int glfwKey) {
         return KeyBindingHelper.registerKeyBinding(new KeyBinding(translationKey, InputUtil.Type.KEYSYM, glfwKey, CATEGORY));
+    }
+
+    /** Returns the player's actual bound key label for {@code slot}, shortened cleanly for HUD pills. */
+    public static String getBoundKeyLabel(AbilitySlot slot) {
+        if (slot == null) return "?";
+        if (slot == AbilitySlot.DOUBLE_JUMP) {
+            MinecraftClient client = MinecraftClient.getInstance();
+            if (client != null && client.options != null && client.options.jumpKey != null) {
+                return "2x" + compactKeyName(client.options.jumpKey.getBoundKeyLocalizedText().getString());
+            }
+            return "2xSpace";
+        }
+        KeyBinding kb = switch (slot) {
+            case PRIMARY -> KEY_PRIMARY;
+            case SECONDARY -> KEY_SECONDARY;
+            case TERTIARY -> KEY_TERTIARY;
+            case QUATERNARY -> KEY_QUATERNARY;
+            case ALTERNATE -> KEY_ALTERNATE;
+            case FORM_SWITCH -> KEY_FORM_SWITCH;
+            case FEATHER_FALLING_TOGGLE -> KEY_FEATHER_FALLING;
+            case HEAT_BLAST -> KEY_HEAT_BLAST;
+            default -> null;
+        };
+        if (kb == null || kb.isUnbound()) return slot.defaultKeyLabel();
+        return compactKeyName(kb.getBoundKeyLocalizedText().getString());
+    }
+
+    private static String compactKeyName(String raw) {
+        if (raw == null || raw.isBlank()) return "?";
+        String s = raw.trim();
+        return switch (s) {
+            case "Left Shift" -> "LShift";
+            case "Right Shift" -> "RShift";
+            case "Left Control" -> "LCtrl";
+            case "Right Control" -> "RCtrl";
+            case "Left Alt" -> "LAlt";
+            case "Right Alt" -> "RAlt";
+            case "Left Button" -> "LMB";
+            case "Right Button" -> "RMB";
+            case "Middle Button" -> "MMB";
+            default -> s.startsWith("Button ") ? "MB" + s.substring("Button ".length()) : s;
+        };
     }
 
     public static void tick() {
@@ -56,11 +100,16 @@ public final class YPKeybinds {
             drain(KEY_FORM_SWITCH);
             drain(KEY_FEATHER_FALLING);
             drain(KEY_HEAT_BLAST);
+            drain(KEY_GUIDE);
             while (client.options.jumpKey.wasPressed()) {}
             return;
         }
 
-        // Double-tap Space for Boots of the Sky flight
+        while (KEY_GUIDE.wasPressed()) {
+            YPClientNetworking.openGuideScreen();
+            return;
+        }
+
         while (client.options.jumpKey.wasPressed()) {
             long now = System.currentTimeMillis();
             if (lastJumpPressMs != 0L && now - lastJumpPressMs <= 350L) {

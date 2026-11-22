@@ -8,6 +8,7 @@ import com.yppowers.core.PowerRegistry;
 import com.yppowers.item.YPItems;
 import com.yppowers.network.YPNetworking;
 import com.yppowers.system.AllianceSystem;
+import com.yppowers.system.CombatTagSystem;
 import com.yppowers.system.CooldownSystem;
 import com.yppowers.system.EnergySystem;
 import com.yppowers.system.FreezeSystem;
@@ -105,6 +106,7 @@ public final class YPPowersMod implements ModInitializer {
 
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             GraceSystem.serverTick(server);
+            CombatTagSystem.serverTick(server);
             CooldownSystem.get(server).tickAll(server.getTicks());
             EnergySystem.serverTick(server);
             FreezeSystem.serverTick(server);
@@ -137,6 +139,7 @@ public final class YPPowersMod implements ModInitializer {
 
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             ServerPlayerEntity player = handler.getPlayer();
+            CombatTagSystem.onPlayerDisconnect(player);
             Power power = PlayerDataStore.get(server).getPower(player);
             if (power != null) power.onDisconnect(player);
         });
@@ -155,6 +158,7 @@ public final class YPPowersMod implements ModInitializer {
             MinecraftServer server = entity.getEntityWorld().getServer();
             if (server == null) return;
             if (entity instanceof ServerPlayerEntity deadPlayer) {
+                CombatTagSystem.onPlayerDeath(deadPlayer);
                 Power power = PlayerDataStore.get(server).getPower(deadPlayer);
                 if (power != null) power.onDeath(deadPlayer);
                 for (Power p : PowerRegistry.all()) p.onAnyPlayerDeath(deadPlayer);
@@ -189,6 +193,7 @@ public final class YPPowersMod implements ModInitializer {
                 power.onServerStopped(server);
             }
             FreezeSystem.clearAll();
+            CombatTagSystem.clearAll();
             SummonSystem.clearRuntimeState();
             GraceSystem.clearRuntimeState();
         });

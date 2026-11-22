@@ -21,6 +21,7 @@ public final class YPConfig {
     public int schemaVersion = 2;
     public GeneralConfig general = new GeneralConfig();
     public EnergyConfig energy = new EnergyConfig();
+    public CombatConfig combat = new CombatConfig();
     public HudConfig hud = new HudConfig();
     public PowerConfigs powers = new PowerConfigs();
 
@@ -76,10 +77,12 @@ public final class YPConfig {
     public void validate() {
         if (general == null) general = new GeneralConfig();
         if (energy == null) energy = new EnergyConfig();
+        if (combat == null) combat = new CombatConfig();
         if (hud == null) hud = new HudConfig();
         if (powers == null) powers = new PowerConfigs();
         general.validate();
         energy.validate();
+        combat.validate();
         hud.validate();
         powers.validate();
     }

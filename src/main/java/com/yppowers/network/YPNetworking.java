@@ -7,6 +7,7 @@ import com.yppowers.core.AbilitySpec;
 import com.yppowers.core.PlayerDataStore;
 import com.yppowers.core.Power;
 import com.yppowers.core.PowerId;
+import com.yppowers.system.CombatTagSystem;
 import com.yppowers.system.CooldownSystem;
 import com.yppowers.system.EnergySystem;
 import com.yppowers.system.GraceSystem;
@@ -133,6 +134,12 @@ public final class YPNetworking {
         @Override public Id<? extends CustomPayload> getId() { return ID; }
     }
 
+    public record OpenGuideScreenPayload() implements CustomPayload {
+        public static final Id<OpenGuideScreenPayload> ID = new Id<>(Identifier.of(YPPowersMod.MOD_ID, "open_guide_screen"));
+        public static final PacketCodec<RegistryByteBuf, OpenGuideScreenPayload> CODEC = PacketCodec.unit(new OpenGuideScreenPayload());
+        @Override public Id<? extends CustomPayload> getId() { return ID; }
+    }
+
     // -------------------------------------------------------------------------
     // Registration & Dispatch
     // -------------------------------------------------------------------------
@@ -147,6 +154,7 @@ public final class YPNetworking {
         PayloadTypeRegistry.playS2C().register(SyncMorphCatalogPayload.ID, SyncMorphCatalogPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(SyncMorphViewPayload.ID, SyncMorphViewPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(SyncIceEmperorFormPayload.ID, SyncIceEmperorFormPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(OpenGuideScreenPayload.ID, OpenGuideScreenPayload.CODEC);
 
         ServerPlayNetworking.registerGlobalReceiver(AbilityTriggerPayload.ID, (payload, context) -> {
             AbilitySlot slot = AbilitySlot.fromWireId(payload.slotWireId());
@@ -230,17 +238,20 @@ public final class YPNetworking {
         int bleeding = energySys.getBleedingTicks(player.getUuid());
         boolean grace = GraceSystem.isActive(server);
         int lockout = power == null ? 0 : power.abilityLockoutTicks(player, AbilitySlot.PRIMARY);
+        int combatTicks = CombatTagSystem.getRemainingTicks(player.getUuid());
+        int maxCombatTicks = YPConfig.get().combat.durationTicks();
         String chip = power == null ? "" : power.hudStatusChip(player);
 
         List<HudSnapshot.SlotEntry> entries = new ArrayList<>();
         if (power != null) {
             for (AbilitySpec spec : power.hudAbilities(player)) {
                 int cd = spec.cooldownKey().isEmpty() ? 0 : cooldowns.getRemaining(player.getUuid(), spec.cooldownKey());
+                int maxCd = spec.cooldownKey().isEmpty() ? 0 : cooldowns.getMaxDuration(player.getUuid(), spec.cooldownKey());
                 boolean toggleOn = spec.isToggle() && power.isToggleActive(player, spec.slot());
                 double cost = power.handlesOwnEnergy(player, spec.slot()) ? 0.0 : power.energyCost(player, spec.slot());
                 boolean canAfford = cost <= 0.0 || energy + 1.0e-6 >= cost;
                 entries.add(new HudSnapshot.SlotEntry(
-                        spec.slot().wireId(), spec.label(), cd, spec.isToggle(), toggleOn, canAfford
+                        spec.slot().wireId(), spec.label(), cd, maxCd, spec.isToggle(), toggleOn, canAfford
                 ));
             }
         }
@@ -253,6 +264,8 @@ public final class YPNetworking {
                 bleeding,
                 grace,
                 lockout,
+                combatTicks,
+                maxCombatTicks,
                 entries
         );
         ServerPlayNetworking.send(player, new SyncHudPayload(snapshot));
@@ -299,5 +312,10 @@ public final class YPNetworking {
     public static void sendIceEmperorForm(ServerPlayerEntity target, String ownerUuid, String form, boolean active) {
         if (target == null) return;
         ServerPlayNetworking.send(target, new SyncIceEmperorFormPayload(ownerUuid, form == null ? "" : form, active));
+    }
+
+    public static void sendOpenGuide(ServerPlayerEntity player) {
+        if (player == null) return;
+        ServerPlayNetworking.send(player, new OpenGuideScreenPayload());
     }
 }
