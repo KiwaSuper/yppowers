@@ -9,7 +9,7 @@ A Fabric mod for **Minecraft Java Edition 1.21.11** (compiled with **Java 25**) 
 1. **Java 25** (JDK/JRE 25 LTS)
 2. **Minecraft 1.21.11** with [Fabric Loader](https://fabricmc.net/use/) **0.18.1+**
 3. [Fabric API](https://modrinth.com/mod/fabric-api) **0.141.6+1.21.11+**
-4. Place `yppowers-2.1.0.jar` and Fabric API in `.minecraft/mods` (required on **both server and client** for multiplayer).
+4. Place `yppowers-2.1.1.jar` and Fabric API in `.minecraft/mods` (required on **both server and client** for multiplayer).
 
 ---
 
@@ -120,7 +120,7 @@ Run unit tests with:
 .\gradlew.bat test
 ```
 
-The built mod JAR is output to `build/libs/yppowers-2.1.0.jar`.
+The built mod JAR is output to `build/libs/yppowers-2.1.1.jar`.
 
 ---
 

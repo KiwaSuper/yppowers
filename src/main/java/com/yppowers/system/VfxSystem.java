@@ -20,6 +20,14 @@ public final class VfxSystem {
         return Math.max(1, (int) Math.round(count * scale));
     }
 
+    /** Spawns forced + important particles so ability VFX remain visible even on Minimal particles. */
+    public static void spawn(ServerWorld world, ParticleEffect particle,
+                             double x, double y, double z, int count,
+                             double dx, double dy, double dz, double speed) {
+        if (world == null || count <= 0 || YPConfig.get().general.vfxParticleScale <= 0.0) return;
+        world.spawnParticles(particle, true, true, x, y, z, count, dx, dy, dz, speed);
+    }
+
     public static void ring(ServerWorld world, ParticleEffect particle, Vec3d center, double radius, int points, double speed) {
         int n = scaled(points);
         if (world == null || n <= 0) return;
@@ -27,7 +35,7 @@ public final class VfxSystem {
             double angle = (Math.PI * 2.0 * i) / n;
             double x = center.x + Math.cos(angle) * radius;
             double z = center.z + Math.sin(angle) * radius;
-            world.spawnParticles(particle, x, center.y, z, 1, 0.0, 0.0, 0.0, speed);
+            spawn(world, particle, x, center.y, z, 1, 0.0, 0.0, 0.0, speed);
         }
     }
 
@@ -49,8 +57,8 @@ public final class VfxSystem {
             double z1 = base.z + Math.sin(angle) * radius;
             double x2 = base.x - Math.cos(angle) * radius;
             double z2 = base.z - Math.sin(angle) * radius;
-            world.spawnParticles(particle, x1, y, z1, 1, 0.0, 0.02, 0.0, 0.01);
-            world.spawnParticles(particle, x2, y, z2, 1, 0.0, 0.02, 0.0, 0.01);
+            spawn(world, particle, x1, y, z1, 1, 0.0, 0.02, 0.0, 0.01);
+            spawn(world, particle, x2, y, z2, 1, 0.0, 0.02, 0.0, 0.01);
         }
     }
 
@@ -59,7 +67,7 @@ public final class VfxSystem {
         if (world == null || n <= 0) return;
         for (int i = 0; i < n; i++) {
             double y = base.y + (height * i) / n;
-            world.spawnParticles(particle, base.x, y, base.z, 2, 0.18, 0.08, 0.18, 0.01);
+            spawn(world, particle, base.x, y, base.z, 2, 0.18, 0.08, 0.18, 0.01);
         }
     }
 
@@ -69,19 +77,19 @@ public final class VfxSystem {
         for (int i = 0; i <= n; i++) {
             double t = (double) i / n;
             Vec3d p = from.lerp(to, t);
-            world.spawnParticles(particle, p.x, p.y, p.z, 1, 0.02, 0.02, 0.02, 0.0);
+            spawn(world, particle, p.x, p.y, p.z, 1, 0.02, 0.02, 0.02, 0.0);
         }
     }
 
     public static void burst(ServerWorld world, ParticleEffect particle, Vec3d center, int count, double spread, double speed) {
         int n = scaled(count);
         if (world == null || n <= 0) return;
-        world.spawnParticles(particle, center.x, center.y, center.z, n, spread, spread, spread, speed);
+        spawn(world, particle, center.x, center.y, center.z, n, spread, spread, spread, speed);
     }
 
     public static void flash(ServerWorld world, Vec3d center) {
         if (world == null || YPConfig.get().general.vfxParticleScale <= 0.0) return;
-        world.spawnParticles(ParticleTypes.EXPLOSION_EMITTER, center.x, center.y, center.z, 1, 0, 0, 0, 0);
+        spawn(world, ParticleTypes.EXPLOSION_EMITTER, center.x, center.y, center.z, 1, 0, 0, 0, 0);
     }
 
     public static void playSound(ServerWorld world, Vec3d pos, SoundEvent sound, SoundCategory category, float volume, float pitch) {

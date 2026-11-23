@@ -150,7 +150,7 @@ public final class SeriousPunchPower extends Power {
             Vec3d center = origin.add(dir.multiply(step));
             BlockPos base = BlockPos.ofFloored(center);
             if (step % 4 == 0) {
-                world.spawnParticles(ParticleTypes.EXPLOSION, center.x, center.y, center.z, 1, 0.2, 0.2, 0.2, 0.0);
+                VfxSystem.spawn(world, ParticleTypes.EXPLOSION, center.x, center.y, center.z, 1, 0.2, 0.2, 0.2, 0.0);
             }
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dy = -1; dy <= 1; dy++) {

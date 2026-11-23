@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.1
+
+### VFX & Visibility
+- **Always-Visible Ability Particles**: All power particles (`VfxSystem`, GOAT sprint wake, Serious Punch tunnel blasts) now spawn with `force = true` and `important = true`, so ability visuals stay visible even when Minecraft Video Settings → Particles is set to **Minimal** (or **Decreased**).
+
 ## 2.1.0 — Combat Timer, Consent Alliances, Dynamic HUD Bars & In-Game Power Guide
 
 ### Security & PvP Fixes

@@ -348,7 +348,7 @@ public final class GoatPower extends Power {
                 && player.getEntityWorld() instanceof ServerWorld world
                 && world.getServer() != null && world.getServer().getTicks() % 3 == 0) {
             Vec3d wakePos = player.getEntityPos().subtract(player.getVelocity().normalize().multiply(0.4)).add(0, 0.2, 0);
-            world.spawnParticles(YELLOW_WAKE, wakePos.x, wakePos.y, wakePos.z, 2, 0.15, 0.1, 0.15, 0.0);
+            VfxSystem.spawn(world, YELLOW_WAKE, wakePos.x, wakePos.y, wakePos.z, 2, 0.15, 0.1, 0.15, 0.0);
         }
     }
 
