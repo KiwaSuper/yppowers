@@ -1,7 +1,6 @@
 package com.yppowers.mixin.client;
 
-import com.yppowers.client.ClientState;
-import com.yppowers.core.PowerId;
+import com.yppowers.client.ClientPowerData;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.block.enums.CameraSubmersionType;
@@ -17,38 +16,39 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.nio.ByteBuffer;
-
-/** Clear lava vision for Fire God. */
 @Environment(EnvType.CLIENT)
-@Mixin(FogRenderer.class)
+@Mixin({FogRenderer.class})
 public abstract class BackgroundRendererMixin {
-    @Unique
-    private boolean yppowers$extendLavaFog;
+   @Unique
+   private boolean yppowers$extendLavaFog;
 
-    @Inject(
-            method = "applyFog(Lnet/minecraft/client/render/Camera;ILnet/minecraft/client/render/RenderTickCounter;FLnet/minecraft/client/world/ClientWorld;)Lorg/joml/Vector4f;",
-            at = @At("HEAD")
-    )
-    private void yppowers$trackLavaFog(Camera camera, int viewDistance, RenderTickCounter tickCounter,
-                                       float tickDelta, ClientWorld world, CallbackInfoReturnable<Vector4f> cir) {
-        yppowers$extendLavaFog = ClientState.hasPower(PowerId.FIRE_GOD)
-                && camera.getSubmersionType() == CameraSubmersionType.LAVA;
-    }
+   @Inject(
+      method = {"applyFog(Lnet/minecraft/client/render/Camera;ILnet/minecraft/client/render/RenderTickCounter;FLnet/minecraft/client/world/ClientWorld;)Lorg/joml/Vector4f;"},
+      at = {@At("HEAD")}
+   )
+   private void yppowers$trackLavaFog(
+      Camera camera, int viewDistance, RenderTickCounter renderTickCounter, float tickDelta, ClientWorld world, CallbackInfoReturnable<Vector4f> cir
+   ) {
+      this.yppowers$extendLavaFog = ClientPowerData.hasFireGodPower && camera.getSubmersionType() == CameraSubmersionType.LAVA;
+   }
 
-    @ModifyVariable(
-            method = "applyFog(Ljava/nio/ByteBuffer;ILorg/joml/Vector4f;FFFFFF)V",
-            at = @At("HEAD"), argsOnly = true, ordinal = 0
-    )
-    private float yppowers$lavaStart(float start) {
-        return yppowers$extendLavaFog ? 0.0f : start;
-    }
+   @ModifyVariable(
+      method = {"applyFog(Ljava/nio/ByteBuffer;ILorg/joml/Vector4f;FFFFFF)V"},
+      at = @At("HEAD"),
+      argsOnly = true,
+      ordinal = 0
+   )
+   private float yppowers$extendLavaFogStart(float environmentalStart) {
+      return this.yppowers$extendLavaFog ? 0.0F : environmentalStart;
+   }
 
-    @ModifyVariable(
-            method = "applyFog(Ljava/nio/ByteBuffer;ILorg/joml/Vector4f;FFFFFF)V",
-            at = @At("HEAD"), argsOnly = true, ordinal = 1
-    )
-    private float yppowers$lavaEnd(float end) {
-        return yppowers$extendLavaFog ? 192.0f : end;
-    }
+   @ModifyVariable(
+      method = {"applyFog(Ljava/nio/ByteBuffer;ILorg/joml/Vector4f;FFFFFF)V"},
+      at = @At("HEAD"),
+      argsOnly = true,
+      ordinal = 1
+   )
+   private float yppowers$extendLavaFogEnd(float environmentalEnd) {
+      return this.yppowers$extendLavaFog ? 192.0F : environmentalEnd;
+   }
 }

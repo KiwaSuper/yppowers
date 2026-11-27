@@ -4,8 +4,8 @@ import net.minecraft.entity.projectile.PersistentProjectileEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Invoker;
 
-@Mixin(PersistentProjectileEntity.class)
+@Mixin({PersistentProjectileEntity.class})
 public interface PersistentProjectilePierceInvoker {
-    @Invoker("setPierceLevel")
-    void invokeYppowersSetPierceLevel(byte level);
+   @Invoker("setPierceLevel")
+   void yppowers$setPierceLevel(byte var1);
 }

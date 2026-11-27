@@ -1,0 +1,23 @@
+{
+  "parent": "minecraft:adventure/root",
+  "display": {
+    "icon": {
+      "id": "minecraft:mace"
+    },
+    "title": {
+      "text": "balright bro"
+    },
+    "description": {
+      "text": "As Thor, die to another player."
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": false,
+    "hidden": true
+  },
+  "criteria": {
+    "balright_bro": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

@@ -3,7 +3,7 @@
   "id": "yppowers",
   "version": "${version}",
   "name": "YP Powers",
-  "description": "17 unique combat powers with shared Energy, alliances, grace periods, pocket domain, mob morphs, HUD, and full JSON configuration.",
+  "description": "17 fantasy powers with server-authoritative abilities and bundled client-rendered VFX, ritual-unlocked Awakenings, private Time Warper Domain, summons, Energy, and alliances.",
   "authors": [
     "YP"
   ],

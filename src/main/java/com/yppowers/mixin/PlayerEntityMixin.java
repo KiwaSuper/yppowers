@@ -1,57 +1,105 @@
 package com.yppowers.mixin;
 
-import com.yppowers.core.PlayerDataStore;
-import com.yppowers.core.Power;
-import com.yppowers.system.AllianceSystem;
-import com.yppowers.system.CombatUtil;
-import com.yppowers.system.GraceSystem;
+import com.yppowers.alliance.AllianceManager;
+import com.yppowers.command.GraceManager;
+import com.yppowers.power.Power;
+import com.yppowers.power.PowerManager;
+import com.yppowers.power.PowerType;
+import com.yppowers.power.VanillaMeleeTracker;
+import com.yppowers.power.impl.IllusionistPower;
+import com.yppowers.power.impl.TimeWarperPower;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(PlayerEntity.class)
+@Mixin({PlayerEntity.class})
 public abstract class PlayerEntityMixin {
-    @Inject(method = "attack", at = @At("HEAD"), cancellable = true)
-    private void yppowers$preAttack(Entity target, CallbackInfo ci) {
-        if (!(((Object) this) instanceof ServerPlayerEntity player)) return;
-        MinecraftServer server = player.getEntityWorld().getServer();
-        if (server == null) return;
+   @Unique
+   private Power yppowers$getPower() {
+      if ((Object)this instanceof ServerPlayerEntity player && player.getEntityWorld().getServer() != null) {
+         PowerManager manager = PowerManager.get(player.getEntityWorld().getServer());
+         PowerType type = manager.getPowerType(player.getUuid());
+         return type == null ? null : manager.getPowerInstance(type);
+      } else {
+         return null;
+      }
+   }
 
-        if (!GraceSystem.isActive(server)) {
-            Power power = PlayerDataStore.get(server).getPower(player);
-            if (power != null && power.onPreAttack(player, target)) {
-                ci.cancel();
-                return;
-            }
-        }
+   @Inject(
+      method = {"takeShieldHit"},
+      at = {@At("HEAD")},
+      cancellable = true
+   )
+   private void yppowers$preventShieldDisable(ServerWorld world, LivingEntity attacker, CallbackInfo ci) {
+      if ((Object)this instanceof ServerPlayerEntity player) {
+         Power power = this.yppowers$getPower();
+         if (power != null && power.shouldPreventShieldDisable(player)) {
+            ci.cancel();
+         }
+      }
+   }
 
-        if (target instanceof ServerPlayerEntity targetPlayer) {
-            if (GraceSystem.isActive(server)) {
-                GraceSystem.notifyPvpBlocked(player);
-                ci.cancel();
-                return;
-            }
-            if (AllianceSystem.get(server).isAlly(player, targetPlayer)) {
-                ci.cancel();
-                return;
-            }
-        }
+   @Inject(
+      method = {"tick"},
+      at = {@At("TAIL")}
+   )
+   private void yppowers$collectTimeShards(CallbackInfo ci) {
+      if ((Object)this instanceof ServerPlayerEntity player && player.getEntityWorld().getServer() != null) {
+         TimeWarperPower.tryCollectTimeShard(player);
+      }
+   }
 
-        CombatUtil.beginVanillaMelee(player.getUuid());
-    }
+   @Inject(
+      method = {"attack"},
+      at = {@At("HEAD")},
+      cancellable = true
+   )
+   private void yppowers$onAttack(Entity target, CallbackInfo ci) {
+      if ((Object)this instanceof ServerPlayerEntity player && player.getEntityWorld().getServer() != null) {
+         if (!GraceManager.isActive(player.getEntityWorld().getServer())
+            && this.yppowers$getPower() instanceof IllusionistPower illusionist
+            && illusionist.tryThrowGripOnAttack(player)) {
+            ci.cancel();
+            return;
+         }
 
-    @Inject(method = "attack", at = @At("TAIL"))
-    private void yppowers$afterAttack(Entity target, CallbackInfo ci) {
-        if (!(((Object) this) instanceof ServerPlayerEntity player)) return;
-        CombatUtil.endVanillaMelee();
-        MinecraftServer server = player.getEntityWorld().getServer();
-        if (server == null || GraceSystem.isActive(server)) return;
-        Power power = PlayerDataStore.get(server).getPower(player);
-        if (power != null) power.onAttack(player, target);
-    }
+         if (target instanceof ServerPlayerEntity && GraceManager.isActive(player.getEntityWorld().getServer())) {
+            GraceManager.notifyPvpBlocked(player);
+            ci.cancel();
+            return;
+         }
+
+         if (target instanceof ServerPlayerEntity targetPlayer && AllianceManager.get(player.getEntityWorld().getServer()).isAlly(player, targetPlayer)) {
+            ci.cancel();
+            return;
+         }
+
+         VanillaMeleeTracker.begin(player);
+      }
+   }
+
+   @Inject(
+      method = {"attack"},
+      at = {@At("TAIL")}
+   )
+   private void yppowers$afterAttack(Entity target, CallbackInfo ci) {
+      if ((Object)this instanceof ServerPlayerEntity player && player.getEntityWorld().getServer() != null) {
+         VanillaMeleeTracker.end(player);
+         if (GraceManager.isActive(player.getEntityWorld().getServer())) {
+            return;
+         }
+
+         Power power = this.yppowers$getPower();
+         if (power != null) {
+            power.onAttack(player, target);
+         }
+      }
+   }
 }

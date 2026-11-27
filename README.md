@@ -1,6 +1,6 @@
-# YP Powers (v2.1)
+# YP Powers (v2.2)
 
-A Fabric mod for **Minecraft Java Edition 1.21.11** (compiled with **Java 25**) adding **17 unique combat powers**, a shared Energy & Bleeding system, consent-based alliances, a 30-second anti-combat-log PvP timer, global Grace periods, a persistent Pocket Domain dimension, mob morphing, an upgraded Power & Cooldown HUD with an in-game Power Guide (`P`), and clean structured JSON configuration.
+A Fabric mod for **Minecraft Java Edition 1.21.11** (compiled with **Java 25**) featuring **17 unique combat powers**, ritual-unlocked **Awakenings**, world **Artifacts** (**Grimoire of Light** & **Gauntlet of Darkness**), private **Pocket & Time Domains**, bundled client-rendered **VFX & camera shake**, shared **Energy & Bleeding**, **consent-based alliances**, a **30-second anti-combat-log PvP timer**, global **Grace periods**, and an anchorable **Power & Energy HUD** with live in-game HUD settings (`U` / `/yp guide`).
 
 ---
 
@@ -9,7 +9,7 @@ A Fabric mod for **Minecraft Java Edition 1.21.11** (compiled with **Java 25**) 
 1. **Java 25** (JDK/JRE 25 LTS)
 2. **Minecraft 1.21.11** with [Fabric Loader](https://fabricmc.net/use/) **0.18.1+**
 3. [Fabric API](https://modrinth.com/mod/fabric-api) **0.141.6+1.21.11+**
-4. Place `yppowers-2.1.1.jar` and Fabric API in `.minecraft/mods` (required on **both server and client** for multiplayer).
+4. Place `yppowers-2.2.0.jar` and Fabric API in `.minecraft/mods` (required on **both server and client** for multiplayer).
 
 ---
 
@@ -54,15 +54,25 @@ Rebind all keys under **Options → Controls → Key Binds → YP Powers**:
 
 | Default Key | Slot |
 | --- | --- |
-| `G` | Primary Ability |
+| `G` | Primary Ability (Hold for Grimoire Light Beam) |
 | `H` | Secondary Ability |
 | `V` | Tertiary Ability / Shadow Archer Morph Menu |
-| `B` | Quaternary Ability / Shadow Archer Arrow Cycle |
+| `B` | Quaternary Ability / Arrow Cycle / Hold for Fire God Blaze Barrage |
 | `R` | Alternate Ability / Power Toggle |
 | `K` | Ice Emperor Form Switch |
 | `N` | Boots of the Sky Feather Falling Toggle |
 | `L` | Ice Emperor Heat Blast |
-| `P` | Open In-Game Power Guide & HUD Settings |
+| `C` | Kitsune Carry / Mount / Tunnel |
+| `X` | Stick of Deletion Swap Places |
+| `J` | Shadow Archer Special Arrows Toggle / Grimoire Skillset Toggle |
+| `Y` | Shadow Archer Swap With Latest Arrow |
+| `O` | Shadow Archer Bow Enchant Swap |
+| `I` | Fire God Wither Ascendance Skull Volley |
+| `P` | Awakening Ability |
+| `U` | Power Menu & HUD Settings |
+| `M` | Time Warper Chunk Duping Domain |
+| `Z` | Swap Stored Portable Chunk |
+| `F6` | Confirm Destructive Terrain Action |
 
 ---
 
@@ -70,7 +80,12 @@ Rebind all keys under **Options → Controls → Key Binds → YP Powers**:
 
 ### Player Commands
 ```text
-/yp guide
+/yp help
+/yp status
+/yp guide                      (opens Power Menu & HUD Settings)
+/yp rituals                    (view ritual & Awakening progress)
+/yp reset                      (check or restore power gear)
+/yp power check | list
 /yp alliance invite <player>   (alias: /yp alliance add <player>)
 /yp alliance accept <player>
 /yp alliance decline <player>
@@ -83,22 +98,21 @@ Rebind all keys under **Options → Controls → Key Binds → YP Powers**:
 /yp power assign <player> <power-id>
 /yp power clear <player>
 /yp power check [player]
-/yp power list
-/yp energy set <player> <amount>
-/yp energy get <player>
-/yp cooldown clear <player>
+/yp energy <player> set <amount>
 /yp combat clear <player>
 /yp health enable | disable | status
+/yp test <player> [on | off]
+/yp artifact locate | enable <gauntlet|grimoire> | disable <gauntlet|grimoire>
 /yp config reload
 /yp web_slingers give <player>
-/grace <minutes>        (use 0 to end early)
+/grace <minutes>               (use 0 to end early)
 ```
 
 ---
 
 ## Configuration
 
-Configuration is saved cleanly as nested JSON at `config/yppowers.json`, organized into `general`, `energy`, `combat`, `hud`, and `powers.<powerName>` sections. Edit and run `/yp config reload` in-game to apply changes immediately without restarting.
+Configuration is saved in legacy flat JSON format at `config/yppowers_config.json` (with inline comments and automatic version migrations), including combat timer settings (`combat_tag_*`) and HUD settings (`energy_hud_*`). Edit and run `/yp config reload` in-game to apply changes immediately without restarting.
 
 ---
 
@@ -120,7 +134,7 @@ Run unit tests with:
 .\gradlew.bat test
 ```
 
-The built mod JAR is output to `build/libs/yppowers-2.1.1.jar`.
+The built mod JAR is output to `build/libs/yppowers-2.2.0.jar`.
 
 ---
 

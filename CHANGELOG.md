@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.2.0 — 1.19.14 Full Expansion on Legacy Architecture (Java 25)
+
+### Merged 1.19.14 Content & Legacy Architecture
+- Restored the **legacy architecture & flat `config/yppowers_config.json`** (`PowerManager`, `EnergyManager`, `AllianceManager`, `YPConfig`) compiled for **Java 25** (`compatibilityLevel: JAVA_25`, `"java": ">=25"`).
+- **Rituals & Awakenings (`P`)**: Full ritual trials (`RitualManager`) and Awakening ultimates (`AwakeningManager`) for all 17 powers, including Fire God **Wither Ascendance** + Skull Volley (`I`), GOAT high-speed ramming, Poseidon Sink confirmation UI, Teleport Gambit structure teleport GUI, and destructive-action confirmation (`F6`).
+- **2 World Artifacts (`ArtifactSpawnManager`)**: **Grimoire of Light** (custom visuals, flight, light beam, skillset toggle `J`) and **Gauntlet of Darkness** (vault spawning, Blackened mobs & custom tint renderer).
+- **Time Warper Private Dimension & Portable Chunks**: `yppowers:time_domain`, **Chunk Duping Domain** (`M`), and **Portable Chunk Swap** (`Z`).
+- **Expanded Power Moves**: Kitsune Carry/Mount/Tunnel (`C`), Stick of Deletion Swap (`X`), Shadow Archer Special Arrows toggle (`J`), Swap With Latest Arrow (`Y`), Bow Enchant Swap (`O`), and first/third-person disguise camera mixins; Teleport Gambit Random Portals; Divinity stored damage/reflect.
+- **Bundled Client VFX Engine**: 8 custom particle types/textures (`dust_ring`, `foxfire_wisp`, `frost_shard`, `rune`, `soul_wisp`, `spark`, `toxic_bubble`, `web_strand`), client `VfxManager`, camera shake & FOV punch, and custom advancements (*balright bro*, *Yummy Kebab*).
+- **Power Menu (`U`) & Test Mode (`/yp test`)**: Built-in Power Menu for rituals, awakenings, and selectors.
+
+### Carried Forward from v2.1.x
+- **Anti-Combat-Log PvP Timer (30s default)**: Server-authoritative PvP tagging (`CombatTagManager`), kills combat-loggers preserving soulbound gear, broadcasts combat-log, blocks mid-fight alliance edits, clears on death/`/grace`, adds `/yp combat clear <player>`, and displays a draining red HUD banner.
+- **Consent-Based Alliance Invites**: `/yp alliance invite|add|accept|decline|remove|list` with 60s invites, clickable `[Accept]`/`[Decline]` buttons, and cached offline ally names.
+- **Anchorable HUD & Live HUD Settings**: `BOTTOM_RIGHT` default (avoiding Simple Voice Chat), live **HUD Settings** tab inside the `U` Power Menu (`/yp guide`), Power Badge + Grace/Grimoire chip, 10-spark Energy bar, and always-visible-under-F3 rendering.
+- **Always-Visible Ability Particles on Minimal**: All 301 server particle calls (`force=true, important=true`), client `VfxManager` spawns, and all 8 custom `VfxParticles` stay visible even on Minimal particles.
+- Added `/yp config reload`, `/yp power list`, and `/yp guide`.
+
 ## 2.1.1
 
 ### VFX & Visibility

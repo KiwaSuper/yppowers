@@ -1,0 +1,23 @@
+{
+  "parent": "minecraft:adventure/root",
+  "display": {
+    "icon": {
+      "id": "minecraft:iron_sword"
+    },
+    "title": {
+      "text": "Yummy Kebab"
+    },
+    "description": {
+      "text": "At maximum speed, spear 10 entities within 30 seconds as the GOAT."
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "yummy_kebab": {
+      "trigger": "minecraft:impossible"
+    }
+  }
+}

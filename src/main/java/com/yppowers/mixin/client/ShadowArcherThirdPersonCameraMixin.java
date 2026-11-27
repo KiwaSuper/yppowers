@@ -1,6 +1,6 @@
 package com.yppowers.mixin.client;
 
-import com.yppowers.client.ClientState;
+import com.yppowers.client.ClientPowerData;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.MinecraftClient;
@@ -10,17 +10,23 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
 @Environment(EnvType.CLIENT)
-@Mixin(Camera.class)
+@Mixin({Camera.class})
 public abstract class ShadowArcherThirdPersonCameraMixin {
-    @ModifyVariable(method = "clipToSpace", at = @At("HEAD"), argsOnly = true)
-    private float yppowers$scaleThirdPersonDistance(float distance) {
-        Camera camera = (Camera) (Object) this;
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (!ClientState.shadowArcherMorphed || client.player == null
-                || camera.getFocusedEntity() != client.player || !camera.isThirdPerson()) {
-            return distance;
-        }
-        float scale = Math.max(0.7f, Math.min(1.6f, Math.max(0.1f, ClientState.shadowArcherMorphHeight) / 1.8f));
-        return distance * scale;
-    }
+   @ModifyVariable(
+      method = {"clipToSpace"},
+      at = @At("HEAD"),
+      argsOnly = true
+   )
+   private float yppowers$scaleThirdPersonDistance(float distance) {
+      Camera camera = (Camera)(Object)this;
+      MinecraftClient client = MinecraftClient.getInstance();
+      if (ClientPowerData.shadowArcherMorphed && client.player != null && camera.getFocusedEntity() == client.player && camera.isThirdPerson()) {
+         float morphHeight = Math.max(0.1F, ClientPowerData.shadowArcherMorphHeight);
+         float scale = morphHeight / 1.8F;
+         scale = Math.max(0.7F, Math.min(1.6F, scale));
+         return distance * scale;
+      } else {
+         return distance;
+      }
+   }
 }
