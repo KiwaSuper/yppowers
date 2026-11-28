@@ -3,11 +3,11 @@ package com.yppowers.mixin;
 import com.yppowers.alliance.AllianceManager;
 import com.yppowers.command.GraceManager;
 import com.yppowers.entity.BlackenedMobEntityAccess;
-import com.yppowers.item.GauntletOfDarknessManager;
+import com.yppowers.artifact.GauntletOfDarknessManager;
 import com.yppowers.power.Power;
 import com.yppowers.power.PowerManager;
 import com.yppowers.power.PowerType;
-import com.yppowers.power.RitualManager;
+import com.yppowers.progression.RitualManager;
 import java.util.UUID;
 import net.minecraft.entity.EntityData;
 import net.minecraft.entity.LivingEntity;
@@ -128,6 +128,8 @@ public abstract class MobEntityMixin implements BlackenedMobEntityAccess {
    private static boolean yppowers$sameSide(MobEntity mob, LivingEntity target) {
       if (!(target instanceof MobEntity other)) {
          return false;
+      } else if (mob.getCommandTags().contains("yppowers_ice_guard_rogue") || other.getCommandTags().contains("yppowers_ice_guard_rogue")) {
+         return false;
       } else {
          String a = yppowers$ownerTag(mob);
          String b = yppowers$ownerTag(other);
@@ -141,9 +143,9 @@ public abstract class MobEntityMixin implements BlackenedMobEntityAccess {
                return false;
             } else {
                try {
-                  ServerPlayerEntity ownerA = server.getPlayerManager().getPlayer(UUID.fromString(a.substring("yppowers_owner_".length())));
-                  ServerPlayerEntity ownerB = server.getPlayerManager().getPlayer(UUID.fromString(b.substring("yppowers_owner_".length())));
-                  return ownerA != null && ownerB != null && AllianceManager.get(server).isAlly(ownerA, ownerB);
+                  UUID ownerA = UUID.fromString(a.substring("yppowers_owner_".length()));
+                  UUID ownerB = UUID.fromString(b.substring("yppowers_owner_".length()));
+                  return AllianceManager.get(server).areAllied(ownerA, ownerB);
                } catch (IllegalArgumentException var8) {
                   return false;
                }
@@ -154,28 +156,33 @@ public abstract class MobEntityMixin implements BlackenedMobEntityAccess {
 
    @Unique
    private boolean yppowers$shouldIgnore(ServerPlayerEntity player) {
-      if (player.getEntityWorld().getServer() == null) {
+      MinecraftServer server = player.getEntityWorld().getServer();
+      if (server == null) {
          return false;
       } else {
          MobEntity mob = (MobEntity)(Object)this;
+         boolean isRogue = mob.getCommandTags().contains("yppowers_ice_guard_rogue");
+         boolean hasOwnerTag = false;
 
          for (String tag : mob.getCommandTags()) {
             if (tag.startsWith("yppowers_owner_")) {
-               try {
-                  UUID ownerId = UUID.fromString(tag.substring("yppowers_owner_".length()));
-                  ServerPlayerEntity owner = player.getEntityWorld().getServer().getPlayerManager().getPlayer(ownerId);
-                  if (owner != null && (owner == player || AllianceManager.get(player.getEntityWorld().getServer()).isAlly(owner, player))) {
-                     return true;
+               hasOwnerTag = true;
+               if (!isRogue) {
+                  try {
+                     UUID ownerId = UUID.fromString(tag.substring("yppowers_owner_".length()));
+                     if (ownerId.equals(player.getUuid()) || AllianceManager.get(server).areAllied(ownerId, player.getUuid())) {
+                        return true;
+                     }
+                  } catch (IllegalArgumentException var7) {
                   }
-               } catch (IllegalArgumentException var7) {
                }
             }
          }
 
-         if (GraceManager.isActive(player.getEntityWorld().getServer())) {
-            return false;
+         if (GraceManager.isActive(server)) {
+            return hasOwnerTag || isRogue;
          } else {
-            PowerManager manager = PowerManager.get(player.getEntityWorld().getServer());
+            PowerManager manager = PowerManager.get(server);
             PowerType type = manager.getPowerType(player.getUuid());
             if (type == null) {
                return false;

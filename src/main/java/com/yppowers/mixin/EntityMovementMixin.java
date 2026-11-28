@@ -1,6 +1,6 @@
 package com.yppowers.mixin;
 
-import com.yppowers.power.impl.DivinityShieldPower;
+import com.yppowers.power.divinity.DivinityShieldPower;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.MovementType;
 import net.minecraft.util.math.Vec3d;

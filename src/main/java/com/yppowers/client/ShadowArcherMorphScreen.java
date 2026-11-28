@@ -1,7 +1,7 @@
 package com.yppowers.client;
 
-import com.yppowers.power.impl.ArrowType;
-import com.yppowers.power.impl.ShadowArcherMorphRegistry;
+import com.yppowers.power.shadowarcher.ArrowType;
+import com.yppowers.power.shadowarcher.ShadowArcherMorphRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;

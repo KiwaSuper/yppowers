@@ -1,6 +1,6 @@
 package com.yppowers.mixin;
 
-import com.yppowers.item.GrimoireOfLightManager;
+import com.yppowers.artifact.GrimoireOfLightManager;
 import com.yppowers.item.YPItems;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.server.world.ServerWorld;

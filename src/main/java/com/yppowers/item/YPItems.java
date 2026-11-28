@@ -1,4 +1,5 @@
 package com.yppowers.item;
+import com.yppowers.artifact.GauntletOfDarknessItem;
 
 import net.minecraft.item.Item;
 import net.minecraft.item.Item.Settings;
@@ -21,7 +22,14 @@ public final class YPItems {
    );
    public static final Identifier GRIMOIRE_OF_LIGHT_ID = Identifier.of("yppowers", "grimoire_of_light");
    public static final Item GRIMOIRE_OF_LIGHT = Registry.register(
-      Registries.ITEM, GRIMOIRE_OF_LIGHT_ID, new Item(new Settings().registryKey(RegistryKey.of(RegistryKeys.ITEM, GRIMOIRE_OF_LIGHT_ID)).maxCount(1))
+      Registries.ITEM,
+      GRIMOIRE_OF_LIGHT_ID,
+      new Item(new Settings().registryKey(RegistryKey.of(RegistryKeys.ITEM, GRIMOIRE_OF_LIGHT_ID)).maxCount(1)) {
+         @Override
+         public boolean canBeNested() {
+            return false;
+         }
+      }
    );
 
    private YPItems() {

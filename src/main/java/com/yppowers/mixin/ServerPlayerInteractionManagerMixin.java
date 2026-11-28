@@ -1,8 +1,8 @@
 package com.yppowers.mixin;
 
-import com.yppowers.power.impl.TeleportGambitDomainManager;
-import com.yppowers.power.impl.ThorPower;
-import com.yppowers.power.impl.TimeWarperDomainManager;
+import com.yppowers.power.teleportgambit.TeleportGambitDomainManager;
+import com.yppowers.power.thor.ThorPower;
+import com.yppowers.power.timewarper.TimeWarperDomainManager;
 import net.minecraft.item.ItemStack;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.network.ServerPlayerInteractionManager;

@@ -66,18 +66,70 @@ public final class GraceManager {
       }
    }
 
+   public static void clearRuntimeState() {
+      LAST_ABILITY_NOTICE.clear();
+      LAST_PVP_NOTICE.clear();
+   }
+
    public static ServerPlayerEntity findPlayerAttacker(DamageSource source) {
       ServerPlayerEntity player = findPlayerAttacker(source.getAttacker());
       return player != null ? player : findPlayerAttacker(source.getSource());
    }
 
+   public static boolean isPlayerOwnedSummon(DamageSource source) {
+      return isPlayerOwnedSummonEntity(source.getAttacker()) || isPlayerOwnedSummonEntity(source.getSource());
+   }
+
+   public static UUID findSummonOwnerId(Entity entity) {
+      if (entity == null) {
+         return null;
+      }
+      if (entity instanceof ProjectileEntity projectile && projectile.getOwner() != null && projectile.getOwner() != entity) {
+         UUID ownerId = findSummonOwnerId(projectile.getOwner());
+         if (ownerId != null) {
+            return ownerId;
+         }
+      }
+      for (String tag : entity.getCommandTags()) {
+         if (tag.startsWith("yppowers_owner_")) {
+            try {
+               return UUID.fromString(tag.substring("yppowers_owner_".length()));
+            } catch (IllegalArgumentException ignored) {
+            }
+         }
+      }
+      return null;
+   }
+
+   private static boolean isPlayerOwnedSummonEntity(Entity entity) {
+      if (entity == null) {
+         return false;
+      }
+      if (entity.getCommandTags().contains("yppowers_ice_guard_rogue")) {
+         return true;
+      }
+      return findSummonOwnerId(entity) != null;
+   }
+
    private static ServerPlayerEntity findPlayerAttacker(Entity entity) {
       if (entity instanceof ServerPlayerEntity player) {
          return player;
-      } else if (entity instanceof ProjectileEntity projectile && projectile.getOwner() instanceof ServerPlayerEntity player) {
-         return player;
+      } else if (entity instanceof ProjectileEntity projectile) {
+         if (projectile.getOwner() instanceof ServerPlayerEntity player) {
+            return player;
+         }
+         UUID summonOwner = findSummonOwnerId(projectile);
+         if (summonOwner != null && entity.getEntityWorld().getServer() != null) {
+            return entity.getEntityWorld().getServer().getPlayerManager().getPlayer(summonOwner);
+         }
+         return null;
+      } else if (entity instanceof LightningEntity lightning) {
+         return lightning.getChanneler();
+      } else if (entity != null && entity.getEntityWorld().getServer() != null) {
+         UUID summonOwner = findSummonOwnerId(entity);
+         return summonOwner != null ? entity.getEntityWorld().getServer().getPlayerManager().getPlayer(summonOwner) : null;
       } else {
-         return entity instanceof LightningEntity lightning ? lightning.getChanneler() : null;
+         return null;
       }
    }
 }

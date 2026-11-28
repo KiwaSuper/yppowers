@@ -18,7 +18,6 @@
     "MobEntityMixin",
     "ServerPlayerInteractionManagerMixin",
     "ThorMaceItemMixin",
-    "WorldMixin",
     "DoubleInventoryAccessor",
     "SlotMixin",
     "HopperBlockEntityMixin",

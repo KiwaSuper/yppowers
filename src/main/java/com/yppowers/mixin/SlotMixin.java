@@ -1,6 +1,6 @@
 package com.yppowers.mixin;
 
-import com.yppowers.item.GauntletOfDarknessManager;
+import com.yppowers.artifact.GauntletOfDarknessManager;
 import net.minecraft.inventory.Inventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.screen.slot.Slot;

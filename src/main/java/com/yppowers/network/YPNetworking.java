@@ -1,24 +1,24 @@
 package com.yppowers.network;
 
-import com.yppowers.combat.CombatTagManager;
+import com.yppowers.system.CombatTagSystem;
 import com.yppowers.command.GraceManager;
 import com.yppowers.config.YPConfig;
 import com.yppowers.energy.EnergyManager;
-import com.yppowers.item.GrimoireAbilityManager;
-import com.yppowers.item.GrimoireOfLightManager;
+import com.yppowers.artifact.GrimoireAbilityManager;
+import com.yppowers.artifact.GrimoireOfLightManager;
 import com.yppowers.power.Power;
 import com.yppowers.power.PowerManager;
 import com.yppowers.power.PowerType;
-import com.yppowers.power.RitualManager;
-import com.yppowers.power.impl.AwakeningManager;
-import com.yppowers.power.impl.BootsOfTheSkyPower;
-import com.yppowers.power.impl.FireGodPower;
-import com.yppowers.power.impl.IceEmperorPower;
-import com.yppowers.power.impl.KitsunePower;
-import com.yppowers.power.impl.ShadowArcherPower;
-import com.yppowers.power.impl.SpiritChannelerPower;
-import com.yppowers.power.impl.StickOfDeletionPower;
-import com.yppowers.power.impl.TimeWarperPower;
+import com.yppowers.progression.RitualManager;
+import com.yppowers.progression.AwakeningManager;
+import com.yppowers.power.bootssky.BootsOfTheSkyPower;
+import com.yppowers.power.firegod.FireGodPower;
+import com.yppowers.power.iceemperor.IceEmperorPower;
+import com.yppowers.power.kitsune.KitsunePower;
+import com.yppowers.power.shadowarcher.ShadowArcherPower;
+import com.yppowers.power.spiritchanneler.SpiritChannelerPower;
+import com.yppowers.power.deletion.StickOfDeletionPower;
+import com.yppowers.power.timewarper.TimeWarperPower;
 import java.util.Set;
 import java.util.UUID;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
@@ -67,6 +67,7 @@ public final class YPNetworking {
       PayloadTypeRegistry.playS2C().register(YPNetworking.SyncEnergyPayload.ID, YPNetworking.SyncEnergyPayload.CODEC);
       PayloadTypeRegistry.playS2C().register(YPNetworking.SyncHudWarningPayload.ID, YPNetworking.SyncHudWarningPayload.CODEC);
       PayloadTypeRegistry.playS2C().register(YPNetworking.SyncHudStatePayload.ID, YPNetworking.SyncHudStatePayload.CODEC);
+      PayloadTypeRegistry.playS2C().register(HudSnapshot.ID, HudSnapshot.CODEC);
       PayloadTypeRegistry.playS2C().register(YPNetworking.OpenPowerMenuPayload.ID, YPNetworking.OpenPowerMenuPayload.CODEC);
       PayloadTypeRegistry.playS2C().register(YPNetworking.SyncPowerMenuPayload.ID, YPNetworking.SyncPowerMenuPayload.CODEC);
       PayloadTypeRegistry.playS2C().register(YPNetworking.VfxEvent.ID, YPNetworking.VfxEvent.CODEC);
@@ -77,16 +78,30 @@ public final class YPNetworking {
          YPNetworking.PowerMenuRequestPayload.ID, (payload, context) -> context.server().execute(() -> syncPowerMenu(context.player()))
       );
       ServerPlayNetworking.registerGlobalReceiver(YPNetworking.PowerMenuActionPayload.ID, (payload, context) -> context.server().execute(() -> {
-         handlePowerMenuAction(context.player(), payload.action());
-         syncPowerMenu(context.player());
+         ServerPlayerEntity player = context.player();
+         if (!player.isAlive() || player.isRemoved()) {
+            return;
+         }
+         handlePowerMenuAction(player, payload.action());
+         syncPowerMenu(player);
       }));
       ServerPlayNetworking.registerGlobalReceiver(
          YPNetworking.PoseidonSinkConfirmPayload.ID,
-         (payload, context) -> context.server().execute(() -> AwakeningManager.confirmPoseidonSink(context.player()))
+         (payload, context) -> context.server().execute(() -> {
+            ServerPlayerEntity player = context.player();
+            if (player.isAlive() && !player.isRemoved()) {
+               AwakeningManager.confirmPoseidonSink(player);
+            }
+         })
       );
       ServerPlayNetworking.registerGlobalReceiver(
          YPNetworking.TeleportGambitStructureRequestPayload.ID,
-         (payload, context) -> context.server().execute(() -> AwakeningManager.teleportToStructure(context.player(), payload.structureId()))
+         (payload, context) -> context.server().execute(() -> {
+            ServerPlayerEntity player = context.player();
+            if (player.isAlive() && !player.isRemoved()) {
+               AwakeningManager.teleportToStructure(player, payload.structureId());
+            }
+         })
       );
       ServerPlayNetworking.registerGlobalReceiver(
          YPNetworking.FireGodBeamPayload.ID,
@@ -98,7 +113,9 @@ public final class YPNetworking {
                   if (manager.getPowerInstance(PowerType.FIRE_GOD) instanceof FireGodPower fireGod) {
                      if (!payload.active()) {
                         fireGod.setBlazeBeamFiring(player, false);
-                     } else if (manager.getPowerType(player.getUuid()) == PowerType.FIRE_GOD
+                     } else if (player.isAlive()
+                        && !player.isRemoved()
+                        && manager.getPowerType(player.getUuid()) == PowerType.FIRE_GOD
                         && !manager.isGrimoireSkillsetEnabled(player.getUuid())
                         && manager.isPowerEnabled(player, PowerType.FIRE_GOD)
                         && !GraceManager.blockAbility(player)) {
@@ -113,13 +130,22 @@ public final class YPNetworking {
          PowerManager manager = PowerManager.get(context.server());
          if (!payload.active()) {
             GrimoireAbilityManager.setBeamFiring(player, false);
-         } else if (manager.isGrimoireSkillsetEnabled(player.getUuid()) && GrimoireOfLightManager.hasGrimoire(player) && !GraceManager.blockAbility(player)) {
+         } else if (player.isAlive()
+            && !player.isRemoved()
+            && manager.isGrimoireSkillsetEnabled(player.getUuid())
+            && GrimoireOfLightManager.hasGrimoire(player)
+            && !GraceManager.blockAbility(player)) {
             GrimoireAbilityManager.setBeamFiring(player, true);
          }
       }));
       ServerPlayNetworking.registerGlobalReceiver(
          YPNetworking.TimeWarperBlackHoleHoldPayload.ID,
-         (payload, context) -> context.server().execute(() -> TimeWarperPower.updateBlackHoleHold(context.player(), payload.held()))
+         (payload, context) -> context.server().execute(() -> {
+            ServerPlayerEntity player = context.player();
+            if (!payload.held() || (player.isAlive() && !player.isRemoved())) {
+               TimeWarperPower.updateBlackHoleHold(player, payload.held());
+            }
+         })
       );
       ServerPlayNetworking.registerGlobalReceiver(
          YPNetworking.KeybindPayload.ID,
@@ -129,6 +155,9 @@ public final class YPNetworking {
                .execute(
                   () -> {
                      ServerPlayerEntity player = context.player();
+                     if (!player.isAlive() || player.isRemoved()) {
+                        return;
+                     }
                      if (keyType >= 0 && keyType <= 20) {
                         PowerManager manager = PowerManager.get(context.server());
                         if (keyType == 15) {
@@ -150,10 +179,10 @@ public final class YPNetworking {
                                  true
                               );
                            }
-                        } else if (keyType == 19) {
-                           AwakeningManager.confirmDestructiveAwakening(player);
                         } else if (!manager.isGrimoireSkillsetEnabled(player.getUuid())) {
-                           if (keyType == 17) {
+                           if (keyType == 19) {
+                              AwakeningManager.confirmDestructiveAwakening(player);
+                           } else if (keyType == 17) {
                               AwakeningManager.activateChunkDupingDomain(player);
                            } else if (keyType == 18) {
                               AwakeningManager.swapPortableChunk(player);
@@ -163,27 +192,31 @@ public final class YPNetworking {
                               if (power != null) {
                                  if (keyType == 16) {
                                     AwakeningManager.activate(player);
-                                 } else if (keyType == 11) {
-                                    if (type == PowerType.SHADOW_ARCHER && power instanceof ShadowArcherPower archer) {
-                                       archer.toggleSpecialArrows(player);
-                                    }
-                                 } else if (keyType == 13) {
-                                    if (type == PowerType.SHADOW_ARCHER && power instanceof ShadowArcherPower archer) {
-                                       archer.cycleBowEnchantMode(player);
-                                    }
                                  } else if (!GraceManager.blockAbility(player)) {
-                                    if (keyType == 20) {
+                                    if (keyType == 11) {
+                                       if (type == PowerType.SHADOW_ARCHER && power instanceof ShadowArcherPower archer) {
+                                          archer.toggleSpecialArrows(player);
+                                       }
+                                    } else if (keyType == 13) {
+                                       if (type == PowerType.SHADOW_ARCHER && power instanceof ShadowArcherPower archer) {
+                                          archer.cycleBowEnchantMode(player);
+                                       }
+                                    } else if (keyType == 20) {
                                        if (type == PowerType.FIRE_GOD
                                           && power instanceof FireGodPower fireGod
                                           && manager.isPowerEnabled(player, PowerType.FIRE_GOD)) {
                                           fireGod.fireWitherSkullVolley(player);
                                        }
                                     } else if (keyType == 8) {
-                                       if (type == PowerType.DELETION && power instanceof StickOfDeletionPower deletion) {
+                                       if (type == PowerType.DELETION
+                                          && manager.isPowerEnabled(player, PowerType.DELETION)
+                                          && power instanceof StickOfDeletionPower deletion) {
                                           deletion.trySwapPlaces(player);
                                        }
                                     } else if (keyType == 12) {
-                                       if (type == PowerType.SHADOW_ARCHER && power instanceof ShadowArcherPower archer) {
+                                       if (type == PowerType.SHADOW_ARCHER
+                                          && manager.isPowerEnabled(player, PowerType.SHADOW_ARCHER)
+                                          && power instanceof ShadowArcherPower archer) {
                                           archer.teleportToLatestArrow(player);
                                        }
                                     } else if (keyType == 10) {
@@ -194,7 +227,7 @@ public final class YPNetworking {
                                        }
                                     } else {
                                        EnergyManager energyManager = EnergyManager.get(context.server());
-                                       if (type == PowerType.ICE_EMPEROR && keyType != 9 && energyManager.getIceHeatBlastLockoutTicks(player.getUuid()) > 0) {
+                                       if (type == PowerType.ICE_EMPEROR && keyType != 9 && keyType != 4 && energyManager.getIceHeatBlastLockoutTicks(player.getUuid()) > 0) {
                                           int remaining = energyManager.getIceHeatBlastLockoutTicks(player.getUuid());
                                           player.sendMessage(
                                              Text.literal("Ice Emperor abilities locked for " + (remaining + 19) / 20 + "s after Heat Blast.")
@@ -207,22 +240,32 @@ public final class YPNetworking {
                                           }
                                        } else if (keyType == 9) {
                                           if (type == PowerType.ICE_EMPEROR
+                                             && manager.isPowerEnabled(player, PowerType.ICE_EMPEROR)
                                              && power instanceof IceEmperorPower ice
                                              && energyManager.tryActivateIceHeatBlast(player)) {
                                              ice.activateHeatBlast(player);
                                           }
                                        } else if (keyType == 6) {
-                                          if (type == PowerType.ICE_EMPEROR && power instanceof IceEmperorPower iceEmperor) {
+                                          if (type == PowerType.ICE_EMPEROR
+                                             && manager.isPowerEnabled(player, PowerType.ICE_EMPEROR)
+                                             && power instanceof IceEmperorPower iceEmperor) {
                                              iceEmperor.cycleForm(player);
                                           }
                                        } else if (keyType == 2 && power instanceof ShadowArcherPower) {
-                                          LOGGER.info("Sending Shadow Archer morph menu request response to {}", player.getUuid().toString());
-                                          ServerPlayNetworking.send(player, new YPNetworking.OpenMorphMenuPayload());
+                                          if (manager.isPowerEnabled(player, PowerType.SHADOW_ARCHER)) {
+                                             LOGGER.info("Sending Shadow Archer morph menu request response to {}", player.getUuid().toString());
+                                             ServerPlayNetworking.send(player, new YPNetworking.OpenMorphMenuPayload());
+                                          }
                                        } else if (keyType == 5) {
-                                          if (type == PowerType.BOOTS_SKY && EnergyManager.get(context.server()).trySpendAbility(player, keyType)) {
+                                          if (type == PowerType.BOOTS_SKY
+                                             && manager.isPowerEnabled(player, PowerType.BOOTS_SKY)
+                                             && EnergyManager.get(context.server()).trySpendAbility(player, keyType)) {
                                              power.onPrimaryActivate(player);
                                           }
                                        } else if (hasAbilityHandler(power, keyType)) {
+                                          if (keyType != 4 && !manager.isPowerEnabled(player, type)) {
+                                             return;
+                                          }
                                           if (power.canUseKey(player, keyType)) {
                                              if (keyType == 2 && type == PowerType.ICE_EMPEROR && power instanceof IceEmperorPower iceEmperor) {
                                                 EnergyManager.IceGuardSummonResult result = energyManager.trySpendIceGuardSummonEnergy(player);
@@ -265,8 +308,13 @@ public final class YPNetworking {
          String requested = payload.requested();
          context.server().execute(() -> {
             ServerPlayerEntity player = context.player();
+            if (!player.isAlive() || player.isRemoved()) {
+               return;
+            }
             PowerManager manager = PowerManager.get(context.server());
-            if (manager.getPowerType(player.getUuid()) == PowerType.SHADOW_ARCHER) {
+            if (manager.getPowerType(player.getUuid()) == PowerType.SHADOW_ARCHER
+               && !manager.isGrimoireSkillsetEnabled(player.getUuid())
+               && manager.isPowerEnabled(player, PowerType.SHADOW_ARCHER)) {
                if (!GraceManager.blockAbility(player)) {
                   if (EnergyManager.get(context.server()).trySpendAbility(player, 2)) {
                      if (manager.getPowerInstance(PowerType.SHADOW_ARCHER) instanceof ShadowArcherPower archer) {
@@ -583,8 +631,8 @@ public final class YPNetworking {
       PowerType assigned = PowerManager.get(server).getAssignedPowerType(player.getUuid());
       String powerId = assigned == null ? "" : assigned.getId();
       boolean grace = GraceManager.isActive(server);
-      int combatTicks = CombatTagManager.getRemainingTicks(player.getUuid());
-      int maxCombatTicks = CombatTagManager.maxDurationTicks();
+      int combatTicks = CombatTagSystem.getRemainingTicks(player.getUuid());
+      int maxCombatTicks = CombatTagSystem.maxDurationTicks();
       ServerPlayNetworking.send(player, new YPNetworking.SyncHudStatePayload(powerId, grace, combatTicks, maxCombatTicks));
    }
 

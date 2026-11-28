@@ -1,7 +1,7 @@
 package com.yppowers;
 
 import com.yppowers.alliance.AllianceManager;
-import com.yppowers.combat.CombatTagManager;
+import com.yppowers.system.CombatTagSystem;
 import com.yppowers.config.YPConfig;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -12,23 +12,23 @@ import static org.junit.jupiter.api.Assertions.*;
 class CombatAndAllianceTest {
    @AfterEach
    void tearDown() {
-      CombatTagManager.clearAll();
+      CombatTagSystem.clearAll();
    }
 
    @Test
    void combatTagRefreshCountdownAndClear() {
       UUID p = UUID.randomUUID();
-      assertFalse(CombatTagManager.isTagged(p));
-      assertTrue(CombatTagManager.tagPure(p, 600));
-      assertEquals(600, CombatTagManager.getRemainingTicks(p));
-      assertFalse(CombatTagManager.tickPure(p));
-      assertEquals(599, CombatTagManager.getRemainingTicks(p));
-      assertFalse(CombatTagManager.tagPure(p, 600));
+      assertFalse(CombatTagSystem.isTagged(p));
+      assertTrue(CombatTagSystem.tagPure(p, 600));
+      assertEquals(600, CombatTagSystem.getRemainingTicks(p));
+      assertFalse(CombatTagSystem.tickPure(p));
+      assertEquals(599, CombatTagSystem.getRemainingTicks(p));
+      assertFalse(CombatTagSystem.tagPure(p, 600));
       for (int i = 0; i < 599; i++) {
-         assertFalse(CombatTagManager.tickPure(p));
+         assertFalse(CombatTagSystem.tickPure(p));
       }
-      assertTrue(CombatTagManager.tickPure(p));
-      assertFalse(CombatTagManager.isTagged(p));
+      assertTrue(CombatTagSystem.tickPure(p));
+      assertFalse(CombatTagSystem.isTagged(p));
    }
 
    @Test

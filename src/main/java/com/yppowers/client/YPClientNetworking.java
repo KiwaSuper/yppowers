@@ -3,6 +3,7 @@ package com.yppowers.client;
 import com.yppowers.client.render.GrimoireBookVisual;
 import com.yppowers.client.render.VfxManager;
 import com.yppowers.client.render.WitherAscendanceVisual;
+import com.yppowers.network.HudSnapshot;
 import com.yppowers.network.YPNetworking;
 import java.util.Arrays;
 import java.util.List;
@@ -223,6 +224,7 @@ public final class YPClientNetworking {
          ClientPowerData.graceActive = false;
          ClientPowerData.combatTicks = 0;
          ClientPowerData.maxCombatTicks = 600;
+         ClientPowerData.hudSnapshot = HudSnapshot.empty();
          ClientPowerData.iceEmperorForms.clear();
          ClientPowerData.powerMenuDataReady = false;
          ClientPowerData.powerMenuPowerId = "";
@@ -323,6 +325,16 @@ public final class YPClientNetworking {
       }));
       ClientPlayNetworking.registerGlobalReceiver(YPNetworking.SyncHudStatePayload.ID, (payload, context) -> context.client().execute(() -> {
          ClientPowerData.assignedPowerId = payload.powerId();
+         ClientPowerData.graceActive = payload.graceActive();
+         ClientPowerData.combatTicks = Math.max(0, payload.combatTicks());
+         ClientPowerData.maxCombatTicks = Math.max(1, payload.maxCombatTicks());
+      }));
+      ClientPlayNetworking.registerGlobalReceiver(HudSnapshot.ID, (payload, context) -> context.client().execute(() -> {
+         ClientPowerData.hudSnapshot = payload;
+         ClientPowerData.assignedPowerId = payload.powerId();
+         ClientPowerData.energy = Math.max(0.0, payload.energy());
+         ClientPowerData.maxEnergy = Math.max(1.0, payload.maxEnergy());
+         ClientPowerData.bleedingTicks = Math.max(0, payload.bleedingTicks());
          ClientPowerData.graceActive = payload.graceActive();
          ClientPowerData.combatTicks = Math.max(0, payload.combatTicks());
          ClientPowerData.maxCombatTicks = Math.max(1, payload.maxCombatTicks());

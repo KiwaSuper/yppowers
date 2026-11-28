@@ -4,6 +4,7 @@ import com.yppowers.client.ClientPowerData;
 import com.yppowers.client.PoseidonConfirmScreen;
 import com.yppowers.client.YPClientNetworking;
 import com.yppowers.config.YPConfig;
+import com.yppowers.core.AbilityKey;
 import com.yppowers.item.YPItems;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -278,5 +279,42 @@ public class YPKeybinds {
          while (keyBinding.wasPressed()) {
          }
       }
+   }
+
+   /** Returns the player's actual bound key label from Minecraft Controls for dynamic HUD & Power Guide rendering. */
+   public static String getBoundKeyLabel(AbilityKey key) {
+      if (key == null) {
+         return "?";
+      }
+      KeyBinding binding = switch (key) {
+         case PRIMARY -> KEY_PRIMARY;
+         case SECONDARY -> KEY_SECONDARY;
+         case TERTIARY -> KEY_TERTIARY;
+         case QUATERNARY -> KEY_QUATERNARY;
+         case ALTERNATE -> KEY_ALTERNATE;
+         case ICE_EMPEROR_FORM -> KEY_ICE_EMPEROR_FORM;
+         case BOOTS_FEATHER_FALLING -> KEY_BOOTS_FEATHER_FALLING;
+         case DELETION_SWAP -> KEY_DELETION_SWAP;
+         case ICE_HEAT_BLAST -> KEY_ICE_HEAT_BLAST;
+         case KITSUNE_CARRY -> KEY_KITSUNE_CARRY;
+         case SHADOW_ARCHER_SPECIAL_ARROWS -> KEY_SHADOW_ARCHER_SPECIAL_ARROWS;
+         case SHADOW_ARCHER_ARROW_SWAP -> KEY_SHADOW_ARCHER_ARROW_SWAP;
+         case SHADOW_ARCHER_BOW_MODE -> KEY_SHADOW_ARCHER_BOW_MODE;
+         case GRIMOIRE_TOGGLE -> KEY_GRIMOIRE_TOGGLE;
+         case AWAKENING -> KEY_AWAKENING;
+         case CHUNK_DUPING_DOMAIN -> KEY_CHUNK_DUPING_DOMAIN;
+         case PORTABLE_CHUNK_SWAP -> KEY_PORTABLE_CHUNK_SWAP;
+         case CONFIRM_TERRAIN_ACTION -> KEY_CONFIRM_TERRAIN_ACTION;
+         case WITHER_ASCENDANCE_SKULL -> KEY_FIRE_GOD_WITHER_SKULL;
+         default -> null;
+      };
+      if (binding == null) {
+         return key.defaultLabel();
+      }
+      String localized = binding.getBoundKeyLocalizedText().getString();
+      if (localized == null || localized.isBlank()) {
+         return key.defaultLabel();
+      }
+      return localized.length() > 8 ? localized.substring(0, 8) : localized;
    }
 }

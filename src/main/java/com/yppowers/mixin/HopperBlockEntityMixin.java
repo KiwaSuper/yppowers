@@ -1,6 +1,6 @@
 package com.yppowers.mixin;
 
-import com.yppowers.item.GauntletOfDarknessManager;
+import com.yppowers.artifact.GauntletOfDarknessManager;
 import net.minecraft.block.entity.HopperBlockEntity;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.inventory.Inventory;

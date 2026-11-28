@@ -1,17 +1,17 @@
 package com.yppowers.mixin;
 
 import com.yppowers.alliance.AllianceManager;
-import com.yppowers.combat.CombatTagManager;
+import com.yppowers.system.CombatTagSystem;
 import com.yppowers.command.GraceManager;
 import com.yppowers.energy.EnergyManager;
 import com.yppowers.power.Power;
 import com.yppowers.power.PowerManager;
 import com.yppowers.power.PowerType;
-import com.yppowers.power.RitualManager;
-import com.yppowers.power.impl.BootsOfTheSkyPower;
-import com.yppowers.power.impl.IceEmperorPower;
-import com.yppowers.power.impl.IllusionistPower;
-import com.yppowers.power.impl.TimeWarperPower;
+import com.yppowers.progression.RitualManager;
+import com.yppowers.power.bootssky.BootsOfTheSkyPower;
+import com.yppowers.power.iceemperor.IceEmperorPower;
+import com.yppowers.power.illusionist.IllusionistPower;
+import com.yppowers.power.timewarper.TimeWarperPower;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LightningEntity;
 import net.minecraft.entity.LivingEntity;
@@ -54,6 +54,9 @@ public abstract class LivingEntityMixin {
             GraceManager.notifyPvpBlocked(attacker);
             this.yppowers$currentDamageSource = null;
             cir.setReturnValue(false);
+         } else if (GraceManager.isPlayerOwnedSummon(source)) {
+            this.yppowers$currentDamageSource = null;
+            cir.setReturnValue(false);
          }
       }
 
@@ -76,9 +79,9 @@ public abstract class LivingEntityMixin {
    private void yppowers$clearDamageSource(ServerWorld world, DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
       if (cir.getReturnValueZ() && (Object)this instanceof ServerPlayerEntity player && player.getEntityWorld().getServer() != null) {
          IllusionistPower.onOwnerDamaged(player);
-         ServerPlayerEntity attacker = CombatTagManager.resolvePlayerAttacker(world.getServer(), source);
+         ServerPlayerEntity attacker = CombatTagSystem.resolvePlayerAttacker(world.getServer(), source);
          if (attacker != null && attacker != player) {
-            CombatTagManager.tagPvp(attacker, player);
+            CombatTagSystem.tagPvp(attacker, player);
          }
       }
 
@@ -128,6 +131,12 @@ public abstract class LivingEntityMixin {
          } else {
             Entity attackerEntity = source.getAttacker();
             if (target instanceof ServerPlayerEntity targetPlayer && IceEmperorPower.shouldGuardIgnore(attackerEntity, targetPlayer)) {
+               return 0.0F;
+            } else if (target instanceof ServerPlayerEntity targetPlayer
+               && attackerEntity != null
+               && !attackerEntity.getCommandTags().contains("yppowers_ice_guard_rogue")
+               && GraceManager.findSummonOwnerId(attackerEntity) != null
+               && AllianceManager.get(targetPlayer.getEntityWorld().getServer()).areAllied(GraceManager.findSummonOwnerId(attackerEntity), targetPlayer.getUuid())) {
                return 0.0F;
             } else if (target instanceof ServerPlayerEntity targetPlayer
                && attackerEntity instanceof ServerPlayerEntity attackerPlayer

@@ -1,6 +1,6 @@
 package com.yppowers.mixin;
 
-import com.yppowers.power.RitualManager;
+import com.yppowers.progression.RitualManager;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.PotionContentsComponent;
 import net.minecraft.entity.LivingEntity;

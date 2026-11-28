@@ -1,5 +1,6 @@
 package com.yppowers.power;
 
+import com.yppowers.core.HudPill;
 import java.util.List;
 import java.util.UUID;
 import net.minecraft.entity.Entity;
@@ -7,6 +8,9 @@ import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.math.BlockPos;
 
 public abstract class Power {
    public abstract PowerType getType();
@@ -98,5 +102,31 @@ public abstract class Power {
    }
 
    public void clearCooldowns(UUID playerId) {
+   }
+
+   /** Optional short status chip displayed next to the power name on the HUD (form, mode, shards, flight, etc.). */
+   public String hudStatusChip(ServerPlayerEntity player) {
+      return "";
+   }
+
+   /** Live ability/toggle pills displayed on the player HUD with dynamic bound keys and draining cooldown bars. */
+   public List<HudPill> hudPills(ServerPlayerEntity player, double currentEnergy) {
+      return List.of();
+   }
+
+   public ActionResult onUseItem(ServerPlayerEntity player, Hand hand) {
+      return ActionResult.PASS;
+   }
+
+   public ActionResult onUseBlock(ServerPlayerEntity player, Hand hand, BlockPos pos) {
+      return ActionResult.PASS;
+   }
+
+   public ActionResult onAttackEntity(ServerPlayerEntity player, Hand hand, Entity target) {
+      return ActionResult.PASS;
+   }
+
+   public ActionResult onUseEntity(ServerPlayerEntity player, Hand hand, Entity target) {
+      return ActionResult.PASS;
    }
 }

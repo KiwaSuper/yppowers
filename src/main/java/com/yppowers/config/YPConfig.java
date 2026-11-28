@@ -507,6 +507,7 @@ public class YPConfig {
    public boolean combat_tag_block_alliance_changes = true;
    public boolean combat_tag_broadcast_logout = true;
    public boolean energy_hud_enabled = true;
+   public boolean energy_hud_show_cooldown_pills = true;
    public String energy_hud_anchor = "BOTTOM_RIGHT";
    public int energy_hud_offset_x = 8;
    public int energy_hud_offset_y = 8;

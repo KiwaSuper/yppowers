@@ -1,9 +1,11 @@
 package com.yppowers.power;
+import com.yppowers.progression.RitualManager;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.Dynamic;
+import com.yppowers.core.PowerRegistry;
 import com.yppowers.network.YPNetworking;
-import com.yppowers.power.impl.ArrowType;
+import com.yppowers.power.shadowarcher.ArrowType;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -71,6 +73,7 @@ public class PowerManager extends PersistentState {
 
    public static void registerPower(Power power) {
       powerInstances.put(power.getType(), power);
+      PowerRegistry.register(power);
    }
 
    public void assignPower(ServerPlayerEntity player, PowerType type) {

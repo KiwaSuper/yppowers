@@ -1,6 +1,6 @@
 package com.yppowers.mixin;
 
-import com.yppowers.power.impl.PoseidonPower;
+import com.yppowers.power.poseidon.PoseidonPower;
 import net.minecraft.entity.player.HungerManager;
 import net.minecraft.server.network.ServerPlayerEntity;
 import org.spongepowered.asm.mixin.Mixin;

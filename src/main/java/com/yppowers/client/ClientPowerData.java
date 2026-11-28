@@ -1,5 +1,6 @@
 package com.yppowers.client;
 
+import com.yppowers.network.HudSnapshot;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -34,6 +35,7 @@ public class ClientPowerData {
    public static boolean graceActive = false;
    public static int combatTicks = 0;
    public static int maxCombatTicks = 600;
+   public static HudSnapshot hudSnapshot = HudSnapshot.empty();
    public static boolean powerMenuDataReady = false;
    public static String powerMenuPowerId = "";
    public static String powerMenuRitualStatus = "";

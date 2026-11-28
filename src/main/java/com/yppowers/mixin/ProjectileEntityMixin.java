@@ -2,8 +2,8 @@ package com.yppowers.mixin;
 
 import com.yppowers.alliance.AllianceManager;
 import com.yppowers.command.GraceManager;
-import com.yppowers.power.impl.DivinityShieldPower;
-import com.yppowers.power.impl.ShadowArcherPower;
+import com.yppowers.power.divinity.DivinityShieldPower;
+import com.yppowers.power.shadowarcher.ShadowArcherPower;
 import java.util.UUID;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.mob.MobEntity;

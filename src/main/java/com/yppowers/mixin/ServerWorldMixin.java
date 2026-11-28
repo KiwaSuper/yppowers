@@ -1,10 +1,10 @@
 package com.yppowers.mixin;
 
-import com.yppowers.power.impl.IceEmperorPower;
-import com.yppowers.power.impl.SeriousPunchPower;
-import com.yppowers.power.impl.ShadowArcherPower;
-import com.yppowers.power.impl.SummoningVfx;
-import com.yppowers.power.impl.TimeWarperPower;
+import com.yppowers.power.iceemperor.IceEmperorPower;
+import com.yppowers.power.punch.SeriousPunchPower;
+import com.yppowers.power.shadowarcher.ShadowArcherPower;
+import com.yppowers.system.SummoningVfx;
+import com.yppowers.power.timewarper.TimeWarperPower;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.projectile.ArrowEntity;
 import net.minecraft.server.world.ServerWorld;

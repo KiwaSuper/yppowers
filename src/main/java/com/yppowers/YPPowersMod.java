@@ -2,45 +2,46 @@ package com.yppowers;
 
 import com.yppowers.alliance.AllianceManager;
 import com.yppowers.client.render.VfxParticles;
-import com.yppowers.combat.CombatTagManager;
+import com.yppowers.system.CombatTagSystem;
 import com.yppowers.command.GraceManager;
 import com.yppowers.command.TestMode;
 import com.yppowers.command.YPCommands;
 import com.yppowers.config.YPConfig;
 import com.yppowers.energy.EnergyManager;
 import com.yppowers.energy.GlobalHealthManager;
-import com.yppowers.item.ArtifactSpawnManager;
-import com.yppowers.item.GauntletOfDarknessManager;
-import com.yppowers.item.GrimoireAbilityManager;
-import com.yppowers.item.GrimoireFlightManager;
-import com.yppowers.item.GrimoireOfLightManager;
+import com.yppowers.artifact.ArtifactSpawnManager;
+import com.yppowers.artifact.GauntletOfDarknessManager;
+import com.yppowers.artifact.GrimoireAbilityManager;
+import com.yppowers.artifact.GrimoireFlightManager;
+import com.yppowers.artifact.GrimoireOfLightManager;
 import com.yppowers.item.YPItems;
+import com.yppowers.network.HudSyncService;
 import com.yppowers.network.YPNetworking;
 import com.yppowers.power.Power;
 import com.yppowers.power.PowerManager;
 import com.yppowers.power.PowerType;
-import com.yppowers.power.RitualManager;
-import com.yppowers.power.impl.AwakeningManager;
-import com.yppowers.power.impl.BootsOfTheSkyPower;
-import com.yppowers.power.impl.DivinityShieldPower;
-import com.yppowers.power.impl.FalloutWarriorPower;
-import com.yppowers.power.impl.FireGodPower;
-import com.yppowers.power.impl.GoatPower;
-import com.yppowers.power.impl.IceEmperorPower;
-import com.yppowers.power.impl.IllusionistPower;
-import com.yppowers.power.impl.KitsunePower;
-import com.yppowers.power.impl.PoseidonPower;
-import com.yppowers.power.impl.SeriousPunchPower;
-import com.yppowers.power.impl.ShadowArcherPower;
-import com.yppowers.power.impl.SpideyPower;
-import com.yppowers.power.impl.SpiritChannelerPower;
-import com.yppowers.power.impl.StickOfDeletionPower;
-import com.yppowers.power.impl.TeleportGambitDomainManager;
-import com.yppowers.power.impl.TeleportGambitPower;
-import com.yppowers.power.impl.TeleportGambitRandomPortalManager;
-import com.yppowers.power.impl.ThorPower;
-import com.yppowers.power.impl.TimeWarperDomainManager;
-import com.yppowers.power.impl.TimeWarperPower;
+import com.yppowers.progression.RitualManager;
+import com.yppowers.progression.AwakeningManager;
+import com.yppowers.power.bootssky.BootsOfTheSkyPower;
+import com.yppowers.power.divinity.DivinityShieldPower;
+import com.yppowers.power.fallout.FalloutWarriorPower;
+import com.yppowers.power.firegod.FireGodPower;
+import com.yppowers.power.goat.GoatPower;
+import com.yppowers.power.iceemperor.IceEmperorPower;
+import com.yppowers.power.illusionist.IllusionistPower;
+import com.yppowers.power.kitsune.KitsunePower;
+import com.yppowers.power.poseidon.PoseidonPower;
+import com.yppowers.power.punch.SeriousPunchPower;
+import com.yppowers.power.shadowarcher.ShadowArcherPower;
+import com.yppowers.power.spidey.SpideyPower;
+import com.yppowers.power.spiritchanneler.SpiritChannelerPower;
+import com.yppowers.power.deletion.StickOfDeletionPower;
+import com.yppowers.power.teleportgambit.TeleportGambitDomainManager;
+import com.yppowers.power.teleportgambit.TeleportGambitPower;
+import com.yppowers.power.teleportgambit.TeleportGambitRandomPortalManager;
+import com.yppowers.power.thor.ThorPower;
+import com.yppowers.power.timewarper.TimeWarperDomainManager;
+import com.yppowers.power.timewarper.TimeWarperPower;
 import java.util.UUID;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents;
@@ -62,9 +63,14 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.Disconnect;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.Join;
 import net.minecraft.advancement.AdvancementEntry;
+import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.block.entity.ChiseledBookshelfBlockEntity;
+import net.minecraft.block.entity.DecoratedPotBlockEntity;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.decoration.ArmorStandEntity;
 import net.minecraft.entity.decoration.ItemFrameEntity;
 import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.entity.passive.AllayEntity;
 import net.minecraft.entity.projectile.ProjectileEntity;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.ItemStack;
@@ -103,7 +109,7 @@ public class YPPowersMod implements ModInitializer {
       UseEntityCallback.EVENT
          .register(
             (UseEntityCallback)(player, world, hand, entity, hitResult) -> {
-               if (!world.isClient() && entity instanceof ItemFrameEntity) {
+               if (!world.isClient() && (entity instanceof ItemFrameEntity || entity instanceof ArmorStandEntity || entity instanceof AllayEntity)) {
                   ItemStack held = player.getStackInHand(hand);
                   return (ActionResult)(!GauntletOfDarknessManager.isGauntlet(held) && !GrimoireOfLightManager.isGrimoire(held)
                      ? ActionResult.PASS
@@ -203,6 +209,13 @@ public class YPPowersMod implements ModInitializer {
          );
       UseBlockCallback.EVENT.register((UseBlockCallback)(player, world, hand, hit) -> {
          if (!world.isClient() && player instanceof ServerPlayerEntity serverPlayer && world instanceof ServerWorld serverWorld) {
+            ItemStack held = serverPlayer.getStackInHand(hand);
+            if (GauntletOfDarknessManager.isGauntlet(held) || GrimoireOfLightManager.isGrimoire(held)) {
+               BlockEntity be = serverWorld.getBlockEntity(hit.getBlockPos());
+               if (be instanceof DecoratedPotBlockEntity || be instanceof ChiseledBookshelfBlockEntity) {
+                  return ActionResult.FAIL;
+               }
+            }
             ArtifactSpawnManager.onContainerInteract(serverPlayer, serverWorld, hit.getBlockPos());
             return ActionResult.PASS;
          } else {
@@ -230,22 +243,40 @@ public class YPPowersMod implements ModInitializer {
          );
       YPCommands.register();
       ServerLifecycleEvents.SERVER_STOPPED.register((ServerStopped)server -> {
-         CombatTagManager.clearAll();
+         CombatTagSystem.clearAll();
+         GraceManager.clearRuntimeState();
+         RitualManager.clearRuntimeState();
          TimeWarperPower.clearTimeStopVisualState();
          TimeWarperPower.clearTimeShardRuntimeState();
          TimeWarperDomainManager.clearRuntimeState();
+         TeleportGambitDomainManager.clearRuntimeState();
          TestMode.clearAll();
          GrimoireFlightManager.clearRuntimeState();
+         GrimoireAbilityManager.clearRuntimeState(server);
          AwakeningManager.clearRuntimeState();
       });
       ServerLifecycleEvents.SERVER_STOPPING.register((ServerStopping)server -> {
          TimeWarperPower.clearBlackHoleRuntimeState(server);
+         TimeWarperPower.shutdown(server);
 
          for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
             AwakeningManager.onPlayerDisconnect(player);
          }
 
          EnergyManager.endOverdrivesForShutdown(server);
+         GrimoireFlightManager.shutdown(server);
+         GrimoireAbilityManager.clearRuntimeState(server);
+         BootsOfTheSkyPower.shutdown(server);
+         DivinityShieldPower.shutdown(server);
+         FalloutWarriorPower.shutdown(server);
+         FireGodPower.shutdown(server);
+         IceEmperorPower.shutdown(server);
+         KitsunePower.shutdown(server);
+         SeriousPunchPower.shutdown(server);
+         ShadowArcherPower.shutdown(server);
+         SpideyPower.shutdown(server);
+         SpiritChannelerPower.shutdown(server);
+         TeleportGambitPower.shutdown(server);
          TeleportGambitDomainManager.shutdown(server);
          TimeWarperDomainManager.shutdown(server);
          TeleportGambitRandomPortalManager.shutdown(server);
@@ -259,7 +290,7 @@ public class YPPowersMod implements ModInitializer {
          GrimoireAbilityManager.serverTick(server);
          PowerManager manager = PowerManager.get(server);
          manager.tickGracePeriod(server);
-         CombatTagManager.serverTick(server);
+         CombatTagSystem.serverTick(server);
          manager.tickTimeWarperFormCooldowns();
          EnergyManager.serverTick(server);
          IllusionistPower.serverTick(server);
@@ -292,8 +323,8 @@ public class YPPowersMod implements ModInitializer {
             }
 
             AwakeningManager.tick(player);
-            if (server.getTicks() % 10 == 0) {
-               YPNetworking.syncHudState(player);
+            if (server.getTicks() % 5 == 0) {
+               HudSyncService.sync(player);
             }
          }
       });
@@ -323,7 +354,7 @@ public class YPPowersMod implements ModInitializer {
          TeleportGambitDomainManager.onPlayerRespawn(newPlayer);
          TimeWarperDomainManager.onPlayerRespawn(newPlayer);
          TeleportGambitRandomPortalManager.restorePendingReturn(newPlayer);
-         YPNetworking.syncHudState(newPlayer);
+         HudSyncService.sync(newPlayer);
       });
       ServerEntityWorldChangeEvents.AFTER_ENTITY_CHANGE_WORLD.register((AfterEntityChange)(oldEntity, newEntity, origin, destination) -> {
          if (oldEntity instanceof ServerPlayerEntity) {
@@ -338,13 +369,13 @@ public class YPPowersMod implements ModInitializer {
       });
       ServerPlayConnectionEvents.DISCONNECT.register((Disconnect)(handler, server) -> {
          ServerPlayerEntity player = handler.getPlayer();
-         CombatTagManager.onPlayerDisconnect(player);
+         CombatTagSystem.onPlayerDisconnect(player);
          YPNetworking.clearVfxForSource(player);
          EnergyManager.get(server).onPlayerDisconnect(player);
          TimeWarperDomainManager.onPlayerDisconnect(player);
          TeleportGambitPower.playerDisconnected(player);
          DivinityShieldPower.playerDisconnected(player);
-         GrimoireFlightManager.onPlayerDisconnect(player, server);
+         KitsunePower.onAnyPlayerDisconnect(player);
          GrimoireAbilityManager.onDisconnect(player);
          PowerManager manager = PowerManager.get(server);
          RitualManager.clearPlayerRuntime(player);
@@ -358,6 +389,7 @@ public class YPPowersMod implements ModInitializer {
          if (assignedType != PowerType.SHADOW_ARCHER && manager.getPowerInstance(PowerType.SHADOW_ARCHER) instanceof ShadowArcherPower archer) {
             archer.onPlayerDisconnect(player);
          }
+         GrimoireFlightManager.onPlayerDisconnect(player, server);
       });
       ServerPlayConnectionEvents.JOIN.register((Join)(handler, sender, server) -> {
          ServerPlayerEntity player = handler.getPlayer();
@@ -386,7 +418,7 @@ public class YPPowersMod implements ModInitializer {
          YPNetworking.syncWitherAscendanceTo(player);
          YPNetworking.syncIceEmperorFormsTo(player);
          TimeWarperPower.syncTimeStopVisualsTo(player);
-         YPNetworking.syncHudState(player);
+         HudSyncService.sync(player);
       });
       ServerLivingEntityEvents.AFTER_DEATH.register((AfterDeath)(entity, damageSource) -> {
          RitualManager.onEntityDeath(entity, damageSource);
@@ -395,7 +427,7 @@ public class YPPowersMod implements ModInitializer {
          }
 
          if (entity instanceof ServerPlayerEntity deadPlayer) {
-            CombatTagManager.onPlayerDeath(deadPlayer);
+            CombatTagSystem.onPlayerDeath(deadPlayer);
             if (deadPlayer.getEntityWorld().getServer() != null) {
                YPNetworking.clearVfxForSource(deadPlayer);
                PowerManager manager = PowerManager.get(deadPlayer.getEntityWorld().getServer());

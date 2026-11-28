@@ -1,5 +1,39 @@
 # Changelog
 
+## 2.3.0 — Modular Architecture + Legacy Config & World-Save Compatibility
+
+### Architecture & Modularity
+- Refactored the `1.19.14` codebase into clean modular packages while keeping **100% compatibility** with your existing flat `config/yppowers_config.json` and existing world saves (`yppowers_data`, `yppowers_alliances`, `yppowers_energy`, Time Domain, Portable Chunks, and Gambit cooldowns):
+  - **`core/`**: Typed `AbilityKey`, `HudPill`, and `PowerRegistry`.
+  - **`system/`**: `CombatTagSystem`, `EpicVfx`, `PowerCombatUtil`, `SummoningVfx`, `SummonTuning`, `TargetingUtil`.
+  - **`progression/`**: `RitualManager` and `AwakeningManager`.
+  - **`artifact/`**: `ArtifactSpawnManager`, `GrimoireOfLight*`, and `GauntletOfDarkness*`.
+  - **`power/<name>/`**: Dedicated sub-packages for all 17 powers (`shadowarcher/`, `timewarper/`, `iceemperor/`, `teleportgambit/`, `firegod/`, etc.) — removed the flat `power/impl/` folder.
+  - **`command/`**: Split commands cleanly into `YPCommands`, `PowerCommands`, `AllianceCommands`, and `AdminCommands` (including `/yp cooldown clear <player>`).
+  - **`network/`**: Added unified `HudSnapshot` & `HudSyncService`.
+
+### HUD & Power Menu Upgrades
+- **Live Cooldown Pills & Dynamic Bound Keys (`YPHudOverlay`)**: Restored live ability/toggle pills beneath the framed 10-spark Energy panel with **smooth draining cooldown progress bars**, **actual rebound key labels** from Minecraft Controls, power accent colors, Awakening cooldown pill, and red draining Combat Timer banner (toggleable via `energy_hud_show_cooldown_pills` in `config/yppowers_config.json`).
+- **3-Tab Power Menu (`U` or `/yp guide`)**:
+  1. **Power & Rituals**: Ritual progress, Awakening status/cooldown, Grimoire status, and Ice/Spirit/Shadow Archer selectors.
+  2. **Powers Guide (17)**: Browse all 17 powers, passives, moves, and Awakenings with your live bound key labels.
+  3. **HUD Settings**: Live-toggle Energy HUD & Cooldown Pills, switch anchor corners (`BOTTOM_RIGHT` default), and adjust X/Y offsets with live preview.
+
+### Security, Exploits & Bug-Fix Audit (1.19.14 Hardening)
+- **Dupe & World-Griefing Exploits Closed**:
+  - **Portable Chunk Storage**: Blocked copying/clearing indestructible or special blocks (Bedrock, End Portals, Vaults, Spawners, Heavy Cores, Command/Structure blocks) and stripped container `BlockEntity` contents during `captureReplica` (closing the 20x item/chest duplication exploit while keeping Swap chest transfers intact), plus added a 5-failure recovery abort cap to prevent permanent server-wide journal lockups.
+  - **Teleport Gambit & Time Warper**: Removed real `Blocks.BEACON` placement from Teleport Gambit Domain (particles only — closes Beacon duplication); fixed `EndPortalBlockMixin` to block *all* entities (mobs, items, pets, players) from entering The End through temporary Gambit gateways; disabled equipment drops on Time Clones and Fallout Warrior minions (closes free diamond/iron gear farming); prevented nesting the Grimoire of Light in bundles/shulkers and blocked hiding artifacts in Armor Stands, Allays, Decorated Pots, Chiseled Bookshelves, cursor stacks, double chests, and Ender Chests.
+  - **Domain & Protection Integrity**: Blocked cross-domain portal stacking (`time_domain` ↔ `teleport_gambit`), guarded block-modifying powers (Grimoire Beam, Awakening Omni-Punch, Spatial Erasure, Kitsune Tunneling, Spidey Cobwebs, Ice Emperor Trail, Teleport Pads, Shadow Archer TNT) with world border, build-limit, and `TimeWarperDomainManager.mayModifyBlock` checks, and ensured re-casting Spatial Erasure restores prior erased blocks cleanly.
+- **PvP, Grace Period & Alliance Fixes**:
+  - **Grace Enforcement**: Summoned mobs (`yppowers_owner_*` & rogue Frost Guards) can no longer target or damage players during Grace; cancelled active Grimoire Beams, Grimoire Flight, Time Stops, Black Holes, Illusionist Grips/Pulls, Kitsune Transformations/Foxfire DoT, Spidey Web Swings, and Awakening passives during Grace; moved `keyType == 11, 13` (Swap / Gambit Portal) and `keyType == 19` (Kitsune Carry) under full Grace, Grimoire-lockout, and Bleeding checks.
+  - **Friendly Fire & Attribution**: Switched Thor lightning to cosmetic bolts with attributed damage, attributed all AoE/DoT/projectile/minion abilities via `indirectMagic(player, player)`, unified `PowerCombatUtil.canHarm` (excluding Spectators, allies, friendly minions, and morph disguises while allowing rogue Frost Guards to fight), and made offline-owner alliance checks safe in `MobEntityMixin` and `LivingEntityMixin`.
+  - **Cooldown & State Exploits**: Stopped death/disconnect from resetting power cooldowns across all combat powers, rejected dead/removed players in C2S gameplay packets and Energy spends, fixed `ThorMaceItemMixin` to enforce `PowerType.THOR` + Grace + Bleeding + server-authoritative launch, and fixed overlapping flight bugs across Grimoire Flight, Wither Ascendance, Shadow Archer Morph, Boots of the Sky, and Illusionist Cloud Flight (which now enforces its configured duration).
+- **Gameplay Bug Fixes & Crash Prevention**:
+  - **GOAT Overdrive + Sprint**: Fixed negative/zero speed freeze when combining GOAT sprint acceleration with Overdrive (`GoatPower.computeOverdriveSpeedBonus`), and cleared Overdrive/damage debt/Bleeding cleanly on death or power switch.
+  - **Poseidon Tsunami & Shield Drop**: Fixed zero-cooldown Tsunami spam and the Poseidon shield drop check.
+  - **Spirit Channeler & Fallout**: Stopped Spirit Channeler from consuming Bones/Prismarine Shards/Phantom Membranes after a form is already unlocked; fixed Fallout Warrior summoning when `fallout_minions_per_cast` > 3.
+  - **Stability & Server Shutdown**: Made `ShadowArcherMorphRegistry` thread-safe (`ConcurrentHashMap` + atomic list swap), removed dead `WorldMixin`, fixed Nether ceiling structure arrivals in Teleport Gambit Awakening, excluded bosses from Kitsune Carry & Illusionist Grip, prevented Spidey Web Swing wall-clipping, fixed Kitsune carried-passenger `NoGravity` leaks on disconnect, and wired full `SERVER_STOPPING` / `SERVER_STOPPED` cleanup hooks for all powers and subsystems.
+
 ## 2.2.1
 
 ### Compatibility

@@ -8,12 +8,12 @@ import com.yppowers.network.YPNetworking;
 import com.yppowers.power.Power;
 import com.yppowers.power.PowerManager;
 import com.yppowers.power.PowerType;
-import com.yppowers.power.impl.BootsOfTheSkyPower;
-import com.yppowers.power.impl.GoatPower;
-import com.yppowers.power.impl.IllusionistPower;
-import com.yppowers.power.impl.SpideyPower;
-import com.yppowers.power.impl.TeleportGambitRandomPortalManager;
-import com.yppowers.power.impl.TimeWarperPower;
+import com.yppowers.power.bootssky.BootsOfTheSkyPower;
+import com.yppowers.power.goat.GoatPower;
+import com.yppowers.power.illusionist.IllusionistPower;
+import com.yppowers.power.spidey.SpideyPower;
+import com.yppowers.power.teleportgambit.TeleportGambitRandomPortalManager;
+import com.yppowers.power.timewarper.TimeWarperPower;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -130,7 +130,7 @@ public final class EnergyManager extends PersistentState {
    }
 
    public EnergyManager.IceGuardSummonResult trySpendIceGuardSummonEnergy(ServerPlayerEntity player) {
-      if (player == null || player.getEntityWorld().getServer() == null) {
+      if (player == null || !player.isAlive() || player.isRemoved() || player.getEntityWorld().getServer() == null) {
          return EnergyManager.IceGuardSummonResult.DENIED;
       } else if (GraceManager.blockAbility(player)) {
          return EnergyManager.IceGuardSummonResult.DENIED;
@@ -199,7 +199,7 @@ public final class EnergyManager extends PersistentState {
    }
 
    public boolean trySpendAbility(ServerPlayerEntity player, int keyType) {
-      if (player == null || player.getEntityWorld().getServer() == null) {
+      if (player == null || !player.isAlive() || player.isRemoved() || player.getEntityWorld().getServer() == null) {
          return false;
       } else if (GraceManager.blockAbility(player)) {
          return false;
@@ -406,7 +406,7 @@ public final class EnergyManager extends PersistentState {
    }
 
    public boolean trySpendDirect(ServerPlayerEntity player, double amount, String abilityName) {
-      if (player != null && player.getEntityWorld().getServer() != null) {
+      if (player != null && player.isAlive() && !player.isRemoved() && player.getEntityWorld().getServer() != null) {
          EnergyManager.PlayerState state = this.state(player.getUuid());
          if (GraceManager.blockAbility(player)) {
             return false;
@@ -495,9 +495,24 @@ public final class EnergyManager extends PersistentState {
       this.sync(player);
    }
 
+   public void clearGoatDebt(UUID playerId) {
+      if (playerId == null) {
+         return;
+      }
+      EnergyManager.PlayerState state = this.players.get(playerId);
+      if (state != null && (state.goatDamageDebt > 0.0 || state.overdriveTicks > 0)) {
+         state.goatDamageDebt = 0.0;
+         state.overdriveTicks = 0;
+         this.markDirty();
+      }
+   }
+
    public void onPlayerDeath(ServerPlayerEntity player) {
       EnergyManager.PlayerState state = this.state(player.getUuid());
       state.overdriveTicks = 0;
+      state.goatDamageDebt = 0.0;
+      state.bleedingTicks = 0;
+      state.bleedDamageClock = 0;
       if ((player.getEntityWorld().getServer() == null ? null : PowerManager.get(player.getEntityWorld().getServer()).getPowerInstance(PowerType.GOAT)) instanceof GoatPower goatPower
          )
        {
@@ -505,6 +520,7 @@ public final class EnergyManager extends PersistentState {
       }
 
       this.markDirty();
+      this.sync(player);
    }
 
    public void onPlayerDisconnect(ServerPlayerEntity player) {
@@ -637,16 +653,22 @@ public final class EnergyManager extends PersistentState {
          }
 
          if (statex.overdriveTicks > 0) {
-            Power goat = PowerManager.get(server).getPowerInstance(PowerType.GOAT);
-            if (GraceManager.isActive(server)) {
+            PowerManager pm = PowerManager.get(server);
+            Power goat = pm.getPowerInstance(PowerType.GOAT);
+            if (GraceManager.isActive(server)
+               || pm.getPowerType(player.getUuid()) != PowerType.GOAT
+               || pm.isGrimoireSkillsetEnabled(player.getUuid())
+               || !player.isAlive()) {
                statex.overdriveTicks = 0;
                if (goat instanceof GoatPower goatPower) {
                   goatPower.removeOverdrive(player);
                }
 
-               player.sendMessage(
-                  Text.literal("GOAT Overdrive ended because the grace period began; deferred damage remains.").formatted(Formatting.YELLOW), true
-               );
+               if (GraceManager.isActive(server)) {
+                  player.sendMessage(
+                     Text.literal("GOAT Overdrive ended because the grace period began; deferred damage remains.").formatted(Formatting.YELLOW), true
+                  );
+               }
             } else {
                statex.overdriveTicks--;
                if (statex.overdriveTicks == 0) {
@@ -663,7 +685,7 @@ public final class EnergyManager extends PersistentState {
             changed = true;
          }
 
-         if (statex.bleedingTicks > 0) {
+         if (statex.bleedingTicks > 0 && player.isAlive()) {
             statex.bleedingTicks--;
             statex.bleedDamageClock++;
             changed = true;

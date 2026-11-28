@@ -5,7 +5,7 @@ import com.yppowers.energy.EnergyManager;
 import com.yppowers.power.Power;
 import com.yppowers.power.PowerManager;
 import com.yppowers.power.PowerType;
-import com.yppowers.power.impl.AwakeningManager;
+import com.yppowers.progression.AwakeningManager;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -70,7 +70,7 @@ public final class TestMode {
 
                powers.clearCooldownsFor(id);
                energy.clearCooldownsFor(id);
-               AwakeningManager.clearCooldowns(id);
+               AwakeningManager.clearCooldowns(server, id);
                if (energy.getEnergy(id) + 1.0E-6 < config.energy_max) {
                   energy.setEnergy(id, config.energy_max);
                }
