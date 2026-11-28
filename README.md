@@ -1,15 +1,15 @@
 # YP Powers (v2.2)
 
-A Fabric mod for **Minecraft Java Edition 1.21.11** (compiled with **Java 25**) featuring **17 unique combat powers**, ritual-unlocked **Awakenings**, world **Artifacts** (**Grimoire of Light** & **Gauntlet of Darkness**), private **Pocket & Time Domains**, bundled client-rendered **VFX & camera shake**, shared **Energy & Bleeding**, **consent-based alliances**, a **30-second anti-combat-log PvP timer**, global **Grace periods**, and an anchorable **Power & Energy HUD** with live in-game HUD settings (`U` / `/yp guide`).
+A Fabric mod for **Minecraft Java Edition 1.21.11** (compiled with **Java 21**, compatible with Java 21+) featuring **17 unique combat powers**, ritual-unlocked **Awakenings**, world **Artifacts** (**Grimoire of Light** & **Gauntlet of Darkness**), private **Pocket & Time Domains**, bundled client-rendered **VFX & camera shake**, shared **Energy & Bleeding**, **consent-based alliances**, a **30-second anti-combat-log PvP timer**, global **Grace periods**, and an anchorable **Power & Energy HUD** with live in-game HUD settings (`U` / `/yp guide`).
 
 ---
 
 ## Requirements & Installation
 
-1. **Java 25** (JDK/JRE 25 LTS)
+1. **Java 21+** (JDK/JRE 21 LTS or newer)
 2. **Minecraft 1.21.11** with [Fabric Loader](https://fabricmc.net/use/) **0.18.1+**
 3. [Fabric API](https://modrinth.com/mod/fabric-api) **0.141.6+1.21.11+**
-4. Place `yppowers-2.2.0.jar` and Fabric API in `.minecraft/mods` (required on **both server and client** for multiplayer).
+4. Place `yppowers-2.2.1.jar` and Fabric API in `.minecraft/mods` (required on **both server and client** for multiplayer).
 
 ---
 
@@ -118,7 +118,7 @@ Configuration is saved in legacy flat JSON format at `config/yppowers_config.jso
 
 ## Building from Source
 
-Requires **JDK 25**:
+Requires **JDK 21**:
 
 ```bash
 ./gradlew build
@@ -134,7 +134,7 @@ Run unit tests with:
 .\gradlew.bat test
 ```
 
-The built mod JAR is output to `build/libs/yppowers-2.2.0.jar`.
+The built mod JAR is output to `build/libs/yppowers-2.2.1.jar`.
 
 ---
 

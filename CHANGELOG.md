@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.1
+
+### Compatibility
+- **Java 21 Target (`>=21`)**: Switched build target, Mixin compatibility level (`JAVA_21`), and `fabric.mod.json` requirement from Java 25 to **Java 21** (classfile major version `65`), so the mod works out-of-the-box on both default Minecraft 1.21.11 **Java 21** and newer JVMs like **Java 25**.
+
 ## 2.2.0 — 1.19.14 Full Expansion on Legacy Architecture (Java 25)
 
 ### Merged 1.19.14 Content & Legacy Architecture
